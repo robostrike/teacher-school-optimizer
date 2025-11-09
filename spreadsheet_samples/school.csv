@@ -1,0 +1,6 @@
+school_id,school_name,closest_station,max_teachers,gender_ratio_target,current_teachers
+S001,Shibuya Elementary,Shibuya,4,0.5,"T001"
+S002,Ebisu Middle,Ebisu,3,0.5,"T002"
+S003,Harajuku High,Harajuku,4,0.5,"T003"
+S004,Meguro Primary,Meguro,4,0.5,"T004"
+S005,Gotanda Academy,Gotanda,4,0.5,"T005"

@@ -1,0 +1,7 @@
+teacher_id,name,gender,closest_station,current_school,max_travel_min
+T001,Ayaka Sato,F,Shibuya,Shibuya Elementary,45
+T002,Kenji Takahashi,M,Ebisu,Ebisu Middle,40
+T003,Mika Tanaka,F,Harajuku,Harajuku High,50
+T004,Daichi Suzuki,M,Meguro,,35
+T005,Yui Nakamura,F,Gotanda,,45
+T006,Kento Mori,M,Shinjuku,,60
