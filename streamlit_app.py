@@ -138,6 +138,55 @@ if st.button("🚀 Run Optimization"):
                     file_name="teacher_assignments.csv",
                     mime="text/csv"
                 )
+                
+                # Manual assignment section
+                st.subheader("🔄 Manual Assignment Override")
+                st.write("Manually adjust teacher assignments as needed.")
+                
+                # Create a copy of the assignments for editing
+                if 'edited_assignments' not in st.session_state:
+                    st.session_state.edited_assignments = assignments_df.copy()
+                
+                # Create a form for editing assignments
+                with st.form("manual_assignment"):
+                    # Get unique schools for the dropdown
+                    school_options = schools_df['name'].tolist() if 'name' in schools_df.columns else [f"School {i+1}" for i in range(len(schools_df))]
+                    
+                    # Create a row for each teacher's assignment
+                    for idx, row in st.session_state.edited_assignments.iterrows():
+                        col1, col2 = st.columns([2, 3])
+                        with col1:
+                            st.text_input("Teacher", 
+                                        value=row['Teacher'], 
+                                        key=f"teacher_{idx}", 
+                                        disabled=True)
+                        with col2:
+                            # Default to current school, fallback to first school if not found
+                            current_school_idx = school_options.index(row['School']) if row['School'] in school_options else 0
+                            st.selectbox("Assigned School", 
+                                        school_options, 
+                                        index=current_school_idx,
+                                        key=f"school_{idx}")
+                    
+                    # Form submission
+                    if st.form_submit_button("💾 Save Manual Assignments"):
+                        # Update the edited assignments
+                        for idx in range(len(st.session_state.edited_assignments)):
+                            teacher = st.session_state[f"teacher_{idx}"]
+                            school = st.session_state[f"school_{idx}"]
+                            st.session_state.edited_assignments.at[idx, 'School'] = school
+                        
+                        # Update the main assignments dataframe
+                        assignments_df = st.session_state.edited_assignments
+                        st.success("✅ Manual assignments saved!")
+                        
+                        # Recalculate total distance (placeholder - you might want to update this based on actual distances)
+                        if 'Distance (km)' in assignments_df.columns:
+                            total_distance = assignments_df['Distance (km)'].sum()
+                
+                # Display the updated assignments
+                st.subheader("📋 Updated Assignments")
+                st.dataframe(st.session_state.edited_assignments, use_container_width=True)
 else:
     st.info("👈 Upload your data files or use the default dataset in the sidebar, then click 'Run Optimization'.")
     
