@@ -330,20 +330,27 @@ if st.button("🚀 Run Optimization"):
                     mime="text/csv"
                 )
                 
+                # Initialize assignment history for undo functionality
+                if 'assignment_history' not in st.session_state:
+                    st.session_state.assignment_history = []
+                
                 # Manual assignment section
                 st.subheader("🔄 Manual Assignment Override")
                 st.write("Manually adjust teacher assignments as needed.")
                 
-                # Create a copy of the assignments for editing
+                # Create a copy of the assignments for editing if not exists
                 if 'edited_assignments' not in st.session_state:
                     st.session_state.edited_assignments = assignments_df.copy()
                 
+                # Get unique schools for the dropdown
+                school_options = schools_df['name'].tolist()
+                school_id_to_name = dict(zip(schools_df['id'], schools_df['name']))
+                
+                # Track changes for real-time updates
+                changes_made = False
+                
                 # Create a form for editing assignments
                 with st.form("manual_assignment"):
-                    # Get unique schools for the dropdown
-                    school_options = schools_df['name'].tolist()
-                    school_id_to_name = dict(zip(schools_df['id'], schools_df['name']))
-                    
                     # Create a row for each teacher's assignment
                     for idx, row in st.session_state.edited_assignments.iterrows():
                         col1, col2 = st.columns([2, 3])
@@ -359,36 +366,54 @@ if st.button("🚀 Run Optimization"):
                             
                             # Create school selection dropdown
                             new_school = st.selectbox(
-                                "Assigned School",
+                                f"School for {row['Teacher Name']}",
                                 school_options,
                                 index=current_school_idx,
                                 key=f"school_{idx}",
                                 label_visibility="collapsed"
                             )
-                    
-                    # Add submit button for the form
-                    submitted = st.form_submit_button("💾 Save Manual Assignments")
-                    
-                    if submitted:
-                        # Update the edited assignments
-                        for idx, row in st.session_state.edited_assignments.iterrows():
-                            # Get the new school ID from the selected school name
-                            new_school_name = st.session_state[f"school_{idx}"]
-                            new_school_id = schools_df[schools_df['name'] == new_school_name]['id'].iloc[0]
                             
-                            # Update the assignment
-                            st.session_state.edited_assignments.at[idx, 'School Name'] = new_school_name
-                            st.session_state.edited_assignments.at[idx, 'School ID'] = new_school_id
+                            # Check if the selection has changed
+                            if new_school != current_school_name:
+                                changes_made = True
+                    
+                    # Action buttons
+                    col1, col2, col3 = st.columns([1, 1, 2])
+                    with col1:
+                        save_clicked = st.form_submit_button("💾 Save Changes")
+                    with col2:
+                        # Only enable undo if we have history
+                        undo_clicked = st.form_submit_button("⏪ Undo", 
+                                                          disabled=len(st.session_state.assignment_history) == 0)
+                    
+                    if save_clicked and changes_made:
+                        # Save current state to history before making changes (for undo)
+                        st.session_state.assignment_history.append(st.session_state.edited_assignments.copy())
                         
-                        # Update the main assignments dataframe
-                        assignments_df = st.session_state.edited_assignments
+                        # Update the assignments with new selections
+                        for idx, row in st.session_state.edited_assignments.iterrows():
+                            new_school_name = st.session_state[f"school_{idx}"]
+                            if new_school_name != row['School Name']:  # Only update if changed
+                                new_school_id = schools_df[schools_df['name'] == new_school_name]['id'].iloc[0]
+                                st.session_state.edited_assignments.at[idx, 'School Name'] = new_school_name
+                                st.session_state.edited_assignments.at[idx, 'School ID'] = new_school_id
                         
                         # Recalculate statistics
-                        st.session_state.total_distance = assignments_df['Travel Time (min)'].sum()
-                        st.session_state.avg_travel_time = assignments_df['Travel Time (min)'].mean()
+                        st.session_state.total_distance = st.session_state.edited_assignments['Travel Time (min)'].sum()
+                        st.session_state.avg_travel_time = st.session_state.edited_assignments['Travel Time (min)'].mean()
                         
-                        st.success("✅ Manual assignments saved!")
+                        st.success("✅ Changes saved!")
                         st.rerun()
+                        
+                    elif undo_clicked and st.session_state.assignment_history:
+                        # Restore previous state
+                        st.session_state.edited_assignments = st.session_state.assignment_history.pop()
+                        st.session_state.total_distance = st.session_state.edited_assignments['Travel Time (min)'].sum()
+                        st.session_state.avg_travel_time = st.session_state.edited_assignments['Travel Time (min)'].mean()
+                        st.success("⏪ Undo successful!")
+                        st.rerun()
+                    elif save_clicked and not changes_made:
+                        st.warning("No changes detected.")
                 
                 # Display the updated assignments with current fitness
                 st.subheader("📋 Updated Assignments")
