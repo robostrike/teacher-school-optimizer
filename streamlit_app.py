@@ -356,6 +356,13 @@ if st.button("🚀 Run Optimization"):
         teachers_df, schools_df, travel_times_df = load_data()
         
         if teachers_df is not None and schools_df is not None and travel_times_df is not None:
+            # Load default data
+            teachers_df, schools_df, travel_times_df = load_data()
+            
+            # Store data in session state if not already there
+            if 'schools_df' not in st.session_state:
+                st.session_state.schools_df = schools_df
+            
             # Show data summaries
             st.subheader("📊 Data Overview")
             col1, col2 = st.columns(2)
@@ -574,43 +581,17 @@ if st.button("🚀 Run Optimization"):
                         'Travel Efficiency': travel_score
                     }
                 
-                # Calculate scores for current assignments
-                current_scores = calculate_priority_scores(
-                    st.session_state.edited_assignments, 
-                    schools_df
-                )
-                
-                # Display priority scores
-                st.subheader("🎯 Priority Scores")
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Staffing", f"{current_scores['Staffing']:.1f}%")
-                    st.caption("% schools with required teachers")
-                with col2:
-                    st.metric("Bilingual", f"{current_scores['Bilingual']:.1f}%")
-                    st.caption("% schools with ≥1 bilingual")
-                with col3:
-                    st.metric("Gender Balance", f"{current_scores['Gender Balance']:.1f}%")
-                    st.caption("Average balance (100% = perfect)")
-                with col4:
-                    st.metric("Travel Efficiency", f"{current_scores['Travel Efficiency']:.1f}%")
-                    st.caption("100% = minimal travel time")
-                
                 # Display the updated assignments
                 st.subheader("📋 Updated Assignments")
                 st.dataframe(st.session_state.edited_assignments, use_container_width=True)
                 
-                # Add a button to update scores without saving changes
-                if st.button("🔄 Update Scores"):
-                    st.rerun()  # Just rerun to recalculate scores
-                
-                # Add a button to reset to original optimization
-                if st.button("🔄 Reset to Optimized Assignments"):
-                    if 'assignments_df' in st.session_state:
-                        st.session_state.edited_assignments = st.session_state.assignments_df.copy()
-                        st.session_state.total_distance = st.session_state.assignments_df['Travel Time (min)'].sum()
-                        st.session_state.avg_travel_time = st.session_state.assignments_df['Travel Time (min)'].mean()
-                        st.rerun()
+                # Save changes button
+                if st.button("💾 Save Changes"):
+                    # Update the assignments in session state
+                    st.session_state.assignments_df = st.session_state.edited_assignments.copy()
+                    st.session_state.total_distance = st.session_state.edited_assignments['Travel Time (min)'].sum()
+                    st.success("Changes saved successfully!")
+                    st.rerun()
 else:
     st.info("👈 Upload your data files or use the default dataset in the sidebar, then click 'Run Optimization'.")
     
