@@ -41,6 +41,80 @@ def load_data():
         st.error(traceback.format_exc())
         return None, None, None
 
+def calculate_priority_scores(assignments_df, schools_df):
+    """
+    Calculate priority scores for the current assignments.
+    Returns a dictionary with scores for each priority (0-100%).
+    """
+    # Initialize scores
+    scores = {
+        'Staffing': 0,
+        'Bilingual': 0,
+        'Gender Balance': 0,
+        'Travel Efficiency': 0
+    }
+    
+    # 1. Staffing Score: % of schools with required teachers (1 per 7 students, max 4)
+    schools_with_required_teachers = 0
+    for _, school in schools_df.iterrows():
+        school_id = school['id']
+        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
+        num_teachers = len(school_teachers)
+        
+        # Calculate required teachers (1 per 7 students, max 4)
+        school_size = school.get('size', 7)  # Default to 7 if size not available
+        required_teachers = min(4, max(1, int(np.ceil(school_size / 7))))
+        
+        if num_teachers >= required_teachers:
+            schools_with_required_teachers += 1
+    
+    if len(schools_df) > 0:
+        scores['Staffing'] = (schools_with_required_teachers / len(schools_df)) * 100
+    
+    # 2. Bilingual Score: % of schools with at least one bilingual teacher
+    schools_with_bilingual = 0
+    for _, school in schools_df.iterrows():
+        school_id = school['id']
+        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
+        bilingual_teachers = school_teachers[school_teachers['Type'] == 'Bilingual']
+        
+        if len(bilingual_teachers) >= 1:
+            schools_with_bilingual += 1
+    
+    if len(schools_df) > 0:
+        scores['Bilingual'] = (schools_with_bilingual / len(schools_df)) * 100
+    
+    # 3. Gender Balance Score: Average balance across all schools (0-100%)
+    gender_balance_scores = []
+    for _, school in schools_df.iterrows():
+        school_id = school['id']
+        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
+        
+        if len(school_teachers) > 0:
+            male_count = len(school_teachers[school_teachers['Gender'] == 'Male'])
+            female_count = len(school_teachers[school_teachers['Gender'] == 'Female'])
+            total = male_count + female_count
+            
+            if total > 0:
+                # Calculate balance score (0-100% where 100% is perfect balance)
+                balance = 1 - (abs(male_count - female_count) / total)
+                gender_balance_scores.append(balance * 100)
+    
+    if gender_balance_scores:
+        scores['Gender Balance'] = np.mean(gender_balance_scores)
+    
+    # 4. Travel Efficiency Score: Normalized score based on total travel time
+    if 'Travel Time (min)' in assignments_df.columns:
+        total_travel = assignments_df['Travel Time (min)'].sum()
+        # Simple normalization (this could be improved with better scaling)
+        # Assuming max travel time per teacher is 60 minutes as a reasonable upper bound
+        max_possible = len(assignments_df) * 60
+        if max_possible > 0:
+            # Higher score is better, so we invert the ratio
+            scores['Travel Efficiency'] = max(0, 100 * (1 - (total_travel / max_possible)))
+    
+    return scores
+
 # Sidebar for priority scores (shown during manual adjustments)
 if 'edited_assignments' in st.session_state and 'schools_df' in st.session_state:
     with st.sidebar:
@@ -523,57 +597,6 @@ if st.button("🚀 Run Optimization"):
                         st.rerun()
                     elif save_clicked and not changes_made:
                         st.warning("No changes detected.")
-                
-                # Function to calculate priority scores
-                def calculate_priority_scores(assignments_df, schools_df):
-                    # 1. Staffing score (% of schools meeting teacher requirements)
-                    school_sizes = schools_df.set_index('id')['size'].to_dict()
-                    
-                    # Calculate required teachers for each school (1 per 7 students, max 4)
-                    school_requirements = {}
-                    for school_id, size in school_sizes.items():
-                        required = min(4, max(1, int(np.ceil(size / 7))))
-                        school_requirements[school_id] = required
-                    
-                    # Count teachers per school
-                    teachers_per_school = assignments_df['School ID'].value_counts().to_dict()
-                    
-                    # Calculate staffing score
-                    staffing_score = 0
-                    for school_id, required in school_requirements.items():
-                        actual = teachers_per_school.get(school_id, 0)
-                        if actual >= required:
-                            staffing_score += 1
-                    staffing_score = (staffing_score / len(school_requirements)) * 100
-                    
-                    # 2. Bilingual score (% of schools with at least one bilingual)
-                    bilingual_schools = assignments_df[assignments_df['Type'] == 'Bilingual']['School ID'].nunique()
-                    bilingual_score = (bilingual_schools / len(school_requirements)) * 100
-                    
-                    # 3. Gender balance score (average balance across schools)
-                    gender_balance = []
-                    for school_id in school_requirements.keys():
-                        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
-                        if len(school_teachers) > 0:
-                            male = (school_teachers['Gender'] == 'Male').sum()
-                            female = len(school_teachers) - male
-                            balance = 1 - (abs(male - female) / len(school_teachers))
-                            gender_balance.append(balance)
-                    gender_score = np.mean(gender_balance) * 100 if gender_balance else 0
-                    
-                    # 4. Travel distance (inverse, normalized)
-                    max_possible_distance = assignments_df['Travel Time (min)'].max() * len(assignments_df)
-                    if max_possible_distance > 0:
-                        travel_score = 100 * (1 - (assignments_df['Travel Time (min)'].sum() / max_possible_distance))
-                    else:
-                        travel_score = 100
-                    
-                    return {
-                        'Staffing': staffing_score,
-                        'Bilingual': bilingual_score,
-                        'Gender Balance': gender_score,
-                        'Travel Efficiency': travel_score
-                    }
                 
                 # Calculate scores for current assignments
                 current_scores = calculate_priority_scores(
