@@ -18,10 +18,10 @@ The optimization aims to minimize the total travel distance for all teachers.
 def load_data():
     data_dir = Path("data")
     try:
-        # Load data
-        teachers_df = pd.read_csv(teachers if teachers else data_dir / "teachers_copy.csv")
-        schools_df = pd.read_csv(schools if schools else data_dir / "kidsduo_schools.csv")
-        travel_times_df = pd.read_csv(stations if stations else data_dir / "station_travel_times.csv")
+        # Load data from default files
+        teachers_df = pd.read_csv(data_dir / "teachers_copy.csv")
+        schools_df = pd.read_csv(data_dir / "kidsduo_schools.csv")
+        travel_times_df = pd.read_csv(data_dir / "station_travel_times.csv")
         
         # Ensure required columns exist and have proper types
         if 'size' not in schools_df.columns:
@@ -41,27 +41,28 @@ def load_data():
         st.error(traceback.format_exc())
         return None, None, None
 
-# File uploaders in sidebar
-with st.sidebar:
-    st.header("📂 Data Upload")
-    st.caption("Upload custom files or use the default dataset")
-    teachers = st.file_uploader("Teachers Data (CSV)", type="csv")
-    schools = st.file_uploader("Schools Data (CSV)", type="csv")
-    stations = st.file_uploader("Travel Times (CSV)", type="csv")
-    
-    # Fitness value display
-    if 'total_distance' in locals() or 'total_distance' in globals():
-        st.metric("Current Fitness (Total Distance)", 
-                 f"{total_distance:.2f} km" if 'total_distance' in locals() or 'total_distance' in globals() else "N/A",
-                 delta=None)
-    
-    if st.button("🔍 View Sample Data"):
-        teachers_df, schools_df, _ = load_data()
-        if teachers_df is not None and schools_df is not None:
-            st.subheader("Sample Teachers Data")
-            st.dataframe(teachers_df.head())
-            st.subheader("Sample Schools Data")
-            st.dataframe(schools_df.head())
+# Sidebar for priority scores (shown during manual adjustments)
+if 'edited_assignments' in st.session_state and 'schools_df' in st.session_state:
+    with st.sidebar:
+        st.header("🎯 Priority Scores")
+        
+        # Calculate and display current scores
+        current_scores = calculate_priority_scores(
+            st.session_state.edited_assignments, 
+            st.session_state.schools_df
+        )
+        
+        st.metric("Staffing", f"{current_scores['Staffing']:.1f}%")
+        st.caption("% schools with required teachers")
+        
+        st.metric("Bilingual", f"{current_scores['Bilingual']:.1f}%")
+        st.caption("% schools with ≥1 bilingual")
+        
+        st.metric("Gender Balance", f"{current_scores['Gender Balance']:.1f}%")
+        st.caption("Average balance (100% = perfect)")
+        
+        st.metric("Travel Efficiency", f"{current_scores['Travel Efficiency']:.1f}%")
+        st.caption("100% = minimal travel time")
 
 def get_travel_time(origin_id, destination_id, travel_times_df):
     """Get travel time between two stations in minutes."""
@@ -356,13 +357,6 @@ if st.button("🚀 Run Optimization"):
         teachers_df, schools_df, travel_times_df = load_data()
         
         if teachers_df is not None and schools_df is not None and travel_times_df is not None:
-            # Load default data
-            teachers_df, schools_df, travel_times_df = load_data()
-            
-            # Store data in session state if not already there
-            if 'schools_df' not in st.session_state:
-                st.session_state.schools_df = schools_df
-            
             # Show data summaries
             st.subheader("📊 Data Overview")
             col1, col2 = st.columns(2)
@@ -581,25 +575,54 @@ if st.button("🚀 Run Optimization"):
                         'Travel Efficiency': travel_score
                     }
                 
+                # Calculate scores for current assignments
+                current_scores = calculate_priority_scores(
+                    st.session_state.edited_assignments, 
+                    schools_df
+                )
+                
+                # Display priority scores
+                st.subheader("🎯 Priority Scores")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Staffing", f"{current_scores['Staffing']:.1f}%")
+                    st.caption("% schools with required teachers")
+                with col2:
+                    st.metric("Bilingual", f"{current_scores['Bilingual']:.1f}%")
+                    st.caption("% schools with ≥1 bilingual")
+                with col3:
+                    st.metric("Gender Balance", f"{current_scores['Gender Balance']:.1f}%")
+                    st.caption("Average balance (100% = perfect)")
+                with col4:
+                    st.metric("Travel Efficiency", f"{current_scores['Travel Efficiency']:.1f}%")
+                    st.caption("100% = minimal travel time")
+                
                 # Display the updated assignments
                 st.subheader("📋 Updated Assignments")
                 st.dataframe(st.session_state.edited_assignments, use_container_width=True)
                 
-                # Save changes button
-                if st.button("💾 Save Changes"):
-                    # Update the assignments in session state
-                    st.session_state.assignments_df = st.session_state.edited_assignments.copy()
-                    st.session_state.total_distance = st.session_state.edited_assignments['Travel Time (min)'].sum()
-                    st.success("Changes saved successfully!")
-                    st.rerun()
+                # Add a button to update scores without saving changes
+                if st.button("🔄 Update Scores"):
+                    st.rerun()  # Just rerun to recalculate scores
+                
+                # Add a button to reset to original optimization
+                if st.button("🔄 Reset to Optimized Assignments"):
+                    if 'assignments_df' in st.session_state:
+                        st.session_state.edited_assignments = st.session_state.assignments_df.copy()
+                        st.session_state.total_distance = st.session_state.assignments_df['Travel Time (min)'].sum()
+                        st.session_state.avg_travel_time = st.session_state.assignments_df['Travel Time (min)'].mean()
+                        st.rerun()
 else:
-    st.info("👈 Upload your data files or use the default dataset in the sidebar, then click 'Run Optimization'.")
+    st.info("👈 Click 'Run Optimization' to start the teacher allocation process.")
     
-    # Show data preview if available
-    teachers_df, schools_df, _ = load_data()
-    if teachers_df is not None and schools_df is not None:
+    # Show data preview
+    try:
+        teachers_df, schools_df, _ = load_data()
         with st.expander("📋 Preview Data"):
             st.subheader("Teachers Data")
             st.dataframe(teachers_df.head())
+            
             st.subheader("Schools Data")
             st.dataframe(schools_df.head())
+    except Exception as e:
+        st.error(f"Failed to load default data. Please check the data files in the data/ directory. Error: {str(e)}")
