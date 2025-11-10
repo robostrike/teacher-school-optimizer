@@ -116,51 +116,76 @@ def optimize_teacher_allocation(teachers_df, schools_df, travel_times_df):
                                  for j in range(num_schools)),
                                 cat='Binary')
         
-        # Slack variables for gender balance
+        # Slack variables for objectives (to handle priorities)
+        staffing_slack = pulp.LpVariable.dicts("staffing_slack", 
+                                           range(num_schools), 
+                                           lowBound=0)
+        
+        bilingual_slack = pulp.LpVariable.dicts("bilingual_slack", 
+                                             range(num_schools), 
+                                             lowBound=0)
+        
         gender_slack = pulp.LpVariable.dicts("gender_slack", 
                                            range(num_schools), 
                                            lowBound=0)
         
-        # 1. Primary objective: Minimize total travel time (weighted highest)
+        # 1. Primary objective: Meet staffing requirements (1 teacher per 7 students, max 4)
+        # We want to minimize the total slack in staffing requirements
+        total_staffing_shortfall = pulp.lpSum(staffing_slack[j] for j in range(num_schools))
+        
+        # 2. Secondary objective: At least one bilingual teacher per school
+        total_bilingual_shortfall = pulp.lpSum(bilingual_slack[j] for j in range(num_schools))
+        
+        # 3. Tertiary objective: Balance of female and male teachers
+        total_gender_imbalance = pulp.lpSum(gender_slack[j] for j in range(num_schools))
+        
+        # 4. Quaternary objective: Minimize total travel distance
         total_distance = pulp.lpSum([distances[i][j] * x[(i, j)] 
                                    for i in range(num_teachers)
                                    for j in range(num_schools)])
         
-        # 2. Secondary objective: Minimize gender imbalance
-        total_gender_imbalance = pulp.lpSum([gender_slack[j] for j in range(num_schools)])
+        # Combined objective with weights to enforce priority order
+        # Using large weights to ensure strict priority order
+        M1 = 100000  # Weight for primary objective (staffing)
+        M2 = 10000   # Weight for secondary objective (bilingual)
+        M3 = 100     # Weight for tertiary objective (gender balance)
+        M4 = 1       # Weight for quaternary objective (distance)
         
-        # Combined objective with weights (travel time is 10x more important than gender balance)
-        prob += total_distance * 10 + total_gender_imbalance
+        prob += (M1 * total_staffing_shortfall + 
+                M2 * total_bilingual_shortfall + 
+                M3 * total_gender_imbalance + 
+                M4 * total_distance)
         
         # Constraints:
         # 1. Each teacher is assigned to exactly one school
         for i in range(num_teachers):
             prob += pulp.lpSum([x[(i, j)] for j in range(num_schools)]) == 1
         
-        # 2. School capacity constraints (4 teachers per 20-30 students)
+        # 2. School capacity constraints (1 teacher per 7 students, max 4)
         for j in range(num_schools):
-            # Ensure school size is a valid number, default to 20 if not
+            # Ensure school size is a valid number, default to 7 if not
             try:
-                school_size = float(schools_df.iloc[j].get('size', 20))
+                school_size = float(schools_df.iloc[j].get('size', 7))
                 if pd.isna(school_size) or school_size <= 0:
-                    school_size = 20  # Default to 20 if size is invalid
+                    school_size = 7  # Default to 7 if size is invalid
             except (ValueError, TypeError):
-                school_size = 20  # Default to 20 if conversion fails
-                
-            # Calculate min and max teachers based on school size
-            min_teachers = max(1, int((school_size // 30) * 4))  # At least 1 teacher, even for small schools
-            max_teachers = min(num_teachers, int(np.ceil((school_size / 20) * 4)))  # Don't exceed total teachers
+                school_size = 7  # Default to 7 if conversion fails
             
-            # Ensure at least min_teachers and at most max_teachers per school
-            if min_teachers > 0 and not np.isinf(min_teachers):
-                prob += pulp.lpSum([x[(i, j)] for i in range(num_teachers)]) >= min_teachers
-            if max_teachers > 0 and not np.isinf(max_teachers):
-                prob += pulp.lpSum([x[(i, j)] for i in range(num_teachers)]) <= max_teachers
+            # Calculate required teachers (1 per 7 students, rounded up, max 4)
+            required_teachers = min(4, max(1, int(np.ceil(school_size / 7))))
             
-            # 3. At least one bilingual teacher per school
+            # Add staffing requirement with slack variable
+            total_teachers = pulp.lpSum([x[(i, j)] for i in range(num_teachers)])
+            prob += total_teachers + staffing_slack[j] >= required_teachers
+            
+            # Add maximum teachers constraint (4)
+            prob += total_teachers <= 4
+            
+            # 3. At least one bilingual teacher per school (with slack variable)
             bilingual_teachers = [i for i, row in teachers_df.iterrows() 
                                 if row['type'] == 'Bilingual']
-            prob += pulp.lpSum([x[(i, j)] for i in bilingual_teachers]) >= 1
+            prob += (pulp.lpSum([x[(i, j)] for i in bilingual_teachers]) + 
+                    bilingual_slack[j] >= 1)
             
             # 4. Gender balance constraints
             male_teachers = [i for i, row in teachers_df.iterrows() 
