@@ -316,54 +316,75 @@ if st.button("🚀 Run Optimization"):
                 # Create a form for editing assignments
                 with st.form("manual_assignment"):
                     # Get unique schools for the dropdown
-                    school_options = schools_df['name'].tolist() if 'name' in schools_df.columns else [f"School {i+1}" for i in range(len(schools_df))]
+                    school_options = schools_df['name'].tolist()
+                    school_id_to_name = dict(zip(schools_df['id'], schools_df['name']))
                     
                     # Create a row for each teacher's assignment
                     for idx, row in st.session_state.edited_assignments.iterrows():
                         col1, col2 = st.columns([2, 3])
                         with col1:
                             st.text_input("Teacher", 
-                                        value=row['Teacher'], 
+                                        value=f"{row['Teacher Name']} ({row['Teacher ID']})", 
                                         key=f"teacher_{idx}", 
                                         disabled=True)
                         with col2:
-                            # Default to current school, fallback to first school if not found
-                            current_school_idx = school_options.index(row['School']) if row['School'] in school_options else 0
-                            st.selectbox("Assigned School", 
-                                        school_options, 
-                                        index=current_school_idx,
-                                        key=f"school_{idx}")
+                            # Get current school name, default to first school if not found
+                            current_school_name = school_id_to_name.get(row['School ID'], school_options[0])
+                            current_school_idx = school_options.index(current_school_name) if current_school_name in school_options else 0
+                            
+                            # Create school selection dropdown
+                            new_school = st.selectbox(
+                                "Assigned School",
+                                school_options,
+                                index=current_school_idx,
+                                key=f"school_{idx}",
+                                label_visibility="collapsed"
+                            )
                     
-                    # Form submission
-                    if st.form_submit_button("💾 Save Manual Assignments"):
+                    # Add submit button for the form
+                    submitted = st.form_submit_button("💾 Save Manual Assignments")
+                    
+                    if submitted:
                         # Update the edited assignments
-                        for idx in range(len(st.session_state.edited_assignments)):
-                            teacher = st.session_state[f"teacher_{idx}"]
-                            school = st.session_state[f"school_{idx}"]
-                            st.session_state.edited_assignments.at[idx, 'School'] = school
+                        for idx, row in st.session_state.edited_assignments.iterrows():
+                            # Get the new school ID from the selected school name
+                            new_school_name = st.session_state[f"school_{idx}"]
+                            new_school_id = schools_df[schools_df['name'] == new_school_name]['id'].iloc[0]
+                            
+                            # Update the assignment
+                            st.session_state.edited_assignments.at[idx, 'School Name'] = new_school_name
+                            st.session_state.edited_assignments.at[idx, 'School ID'] = new_school_id
                         
                         # Update the main assignments dataframe
                         assignments_df = st.session_state.edited_assignments
-                        st.success("✅ Manual assignments saved!")
                         
-                        # Recalculate total distance (placeholder - you might want to update this based on actual distances)
-                        if 'Distance (km)' in assignments_df.columns:
-                            # Update the total_distance in session state to trigger a rerender
-                            st.session_state.total_distance = assignments_df['Distance (km)'].sum()
-                            total_distance = st.session_state.total_distance
-                            
-                            # Force a rerun to update the sidebar
-                            st.rerun()
+                        # Recalculate statistics
+                        st.session_state.total_distance = assignments_df['Travel Time (min)'].sum()
+                        st.session_state.avg_travel_time = assignments_df['Travel Time (min)'].mean()
+                        
+                        st.success("✅ Manual assignments saved!")
+                        st.rerun()
                 
                 # Display the updated assignments with current fitness
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.subheader("📋 Updated Assignments")
-                with col2:
-                    if 'total_distance' in st.session_state:
-                        st.metric("Current Fitness", f"{st.session_state.total_distance:.2f} km")
+                st.subheader("📋 Updated Assignments")
                 
+                # Show summary metrics
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Total Travel Time", f"{st.session_state.get('total_distance', 0):.1f} min")
+                with col2:
+                    st.metric("Avg Travel Time", f"{st.session_state.get('avg_travel_time', 0):.1f} min/teacher")
+                
+                # Display the updated assignments
                 st.dataframe(st.session_state.edited_assignments, use_container_width=True)
+                
+                # Add a button to reset to original optimization
+                if st.button("🔄 Reset to Optimized Assignments"):
+                    if 'assignments_df' in st.session_state:
+                        st.session_state.edited_assignments = st.session_state.assignments_df.copy()
+                        st.session_state.total_distance = st.session_state.assignments_df['Travel Time (min)'].sum()
+                        st.session_state.avg_travel_time = st.session_state.assignments_df['Travel Time (min)'].mean()
+                        st.rerun()
 else:
     st.info("👈 Upload your data files or use the default dataset in the sidebar, then click 'Run Optimization'.")
     
