@@ -1,8 +1,15 @@
+"""
+Teacher-School Allocation Optimizer
+
+This Streamlit application optimizes teacher allocations to schools based on various
+constraints including travel distance, school capacity, and teacher qualifications.
+"""
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pulp
 from pathlib import Path
+from typing import Dict, List, Tuple, Optional, Union
 
 # Set page config
 st.set_page_config(page_title="Teacher Allocation Optimizer", layout="wide")
@@ -15,7 +22,65 @@ The optimization aims to minimize the total travel distance for all teachers.
 """)
 
 # Data loading function
-def load_data():
+def create_tentative_assignments(
+    teachers_df: pd.DataFrame,
+    schools_df: pd.DataFrame,
+    travel_times_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Create a tentative assignment of teachers to schools.
+    
+    Args:
+        teachers_df: DataFrame containing teacher information
+        schools_df: DataFrame containing school information
+        travel_times_df: DataFrame containing travel times between stations
+        
+    Returns:
+        DataFrame with teacher assignments including school and travel time info
+    """
+    # Initialize assignments with teacher data
+    assignments = teachers_df.copy()
+    
+    # Add school assignment columns with proper types
+    assignments = assignments.assign(
+        **{
+            'School ID': '',
+            'School Name': '',
+            'Travel Time (min)': 0.0
+        }
+    )
+    
+    # Assign teachers to schools in round-robin fashion
+    num_schools = len(schools_df)
+    school_assignments = [i % num_schools for i in range(len(teachers_df))]
+    
+    for idx, school_idx in enumerate(school_assignments):
+        school = schools_df.iloc[school_idx]
+        teacher_idx = teachers_df.index[idx]
+        
+        # Assign school
+        assignments.at[teacher_idx, 'School ID'] = school['id']
+        assignments.at[teacher_idx, 'School Name'] = school['name']
+        
+        # Calculate travel time if station data is available
+        if 'station_id' in teachers_df.columns and 'station_id' in school:
+            travel_time = get_travel_time(
+                teachers_df.at[teacher_idx, 'station_id'],
+                school['station_id'],
+                travel_times_df
+            )
+            if pd.notna(travel_time):
+                assignments.at[teacher_idx, 'Travel Time (min)'] = float(travel_time)
+    
+    return assignments
+
+def load_data() -> Tuple[Optional[pd.DataFrame], ...]:
+    """
+    Load and preprocess the required data files.
+    
+    Returns:
+        Tuple containing (teachers_df, schools_df, travel_times_df) or (None, None, None) on error
+    """
     data_dir = Path("data")
     try:
         # Load data from default files
@@ -23,24 +88,40 @@ def load_data():
         schools_df = pd.read_csv(data_dir / "kidsduo_schools.csv")
         travel_times_df = pd.read_csv(data_dir / "station_travel_times.csv")
         
-        # Ensure required columns exist and have proper types
-        if 'size' not in schools_df.columns:
-            schools_df['size'] = 20  # Default size if not present
+        # Preprocess schools data
+        schools_df = _preprocess_schools_data(schools_df)
         
-        # Convert size to numeric, coerce errors to NaN, then fill with default
-        schools_df['size'] = pd.to_numeric(schools_df['size'], errors='coerce').fillna(20).astype(int)
-        
-        # Ensure station IDs are strings
-        if 'station_id' in teachers_df.columns:
-            teachers_df['station_id'] = teachers_df['station_id'].astype(str)
+        # Preprocess teachers data
+        teachers_df = _preprocess_teachers_data(teachers_df)
         
         return teachers_df, schools_df, travel_times_df
+        
     except Exception as e:
         st.error(f"Error loading data: {e}")
-        import traceback
-        st.error(traceback.format_exc())
+        st.error("Please ensure all required data files exist in the 'data' directory.")
         return None, None, None
 
+
+def _preprocess_schools_data(schools_df: pd.DataFrame) -> pd.DataFrame:
+    """Preprocess schools dataframe with proper types and defaults."""
+    df = schools_df.copy()
+    
+    # Ensure required columns with defaults
+    if 'size' not in df.columns:
+        df['size'] = 20
+    
+    # Convert and validate numeric fields
+    df['size'] = pd.to_numeric(df['size'], errors='coerce').fillna(20).astype(int)
+    
+    # Ensure station_id is string if it exists
+    if 'station_id' in df.columns:
+        df['station_id'] = df['station_id'].astype(str)
+    
+    return df
+
+
+def _preprocess_teachers_data(teachers_df: pd.DataFrame) -> pd.DataFrame:
+    """Preprocess teachers dataframe with proper types and defaults."""
 def calculate_priority_scores(assignments_df, schools_df):
     """
     Calculate priority scores for the current assignments.
@@ -115,28 +196,6 @@ def calculate_priority_scores(assignments_df, schools_df):
     
     return scores
 
-# Sidebar for priority scores (shown during manual adjustments)
-if 'edited_assignments' in st.session_state and 'schools_df' in st.session_state:
-    with st.sidebar:
-        st.header("🎯 Priority Scores")
-        
-        # Calculate and display current scores
-        current_scores = calculate_priority_scores(
-            st.session_state.edited_assignments, 
-            st.session_state.schools_df
-        )
-        
-        st.metric("Staffing", f"{current_scores['Staffing']:.1f}%")
-        st.caption("% schools with required teachers")
-        
-        st.metric("Bilingual", f"{current_scores['Bilingual']:.1f}%")
-        st.caption("% schools with ≥1 bilingual")
-        
-        st.metric("Gender Balance", f"{current_scores['Gender Balance']:.1f}%")
-        st.caption("Average balance (100% = perfect)")
-        
-        st.metric("Travel Efficiency", f"{current_scores['Travel Efficiency']:.1f}%")
-        st.caption("100% = minimal travel time")
 
 def get_travel_time(origin_id, destination_id, travel_times_df):
     """Get travel time between two stations in minutes."""
@@ -160,6 +219,7 @@ def get_travel_time(origin_id, destination_id, travel_times_df):
     
     # If no route found, return a high penalty value
     return 999  # High penalty for impossible routes
+
 
 def optimize_teacher_allocation(teachers_df, schools_df, travel_times_df):
     try:
@@ -350,80 +410,6 @@ def optimize_teacher_allocation(teachers_df, schools_df, travel_times_df):
         st.error(traceback.format_exc())
         return None, None, None, None
 
-def calculate_priority_scores(assignments_df, schools_df):
-    """
-    Calculate priority scores for the current assignments.
-    Returns a dictionary with scores for each priority (0-100%).
-    """
-    # Initialize scores
-    scores = {
-        'Staffing': 0,
-        'Bilingual': 0,
-        'Gender Balance': 0,
-        'Travel Efficiency': 0
-    }
-    
-    # 1. Staffing Score: % of schools with required teachers (1 per 7 students, max 4)
-    schools_with_required_teachers = 0
-    for _, school in schools_df.iterrows():
-        school_id = school['id']
-        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
-        num_teachers = len(school_teachers)
-        
-        # Calculate required teachers (1 per 7 students, max 4)
-        school_size = school.get('size', 7)  # Default to 7 if size not available
-        required_teachers = min(4, max(1, int(np.ceil(school_size / 7))))
-        
-        if num_teachers >= required_teachers:
-            schools_with_required_teachers += 1
-    
-    if len(schools_df) > 0:
-        scores['Staffing'] = (schools_with_required_teachers / len(schools_df)) * 100
-    
-    # 2. Bilingual Score: % of schools with at least one bilingual teacher
-    schools_with_bilingual = 0
-    for _, school in schools_df.iterrows():
-        school_id = school['id']
-        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
-        bilingual_teachers = school_teachers[school_teachers['Type'] == 'Bilingual']
-        
-        if len(bilingual_teachers) >= 1:
-            schools_with_bilingual += 1
-    
-    if len(schools_df) > 0:
-        scores['Bilingual'] = (schools_with_bilingual / len(schools_df)) * 100
-    
-    # 3. Gender Balance Score: Average balance across all schools (0-100%)
-    gender_balance_scores = []
-    for _, school in schools_df.iterrows():
-        school_id = school['id']
-        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
-        
-        if len(school_teachers) > 0:
-            male_count = len(school_teachers[school_teachers['Gender'] == 'Male'])
-            female_count = len(school_teachers[school_teachers['Gender'] == 'Female'])
-            total = male_count + female_count
-            
-            if total > 0:
-                # Calculate balance score (0-100% where 100% is perfect balance)
-                balance = 1 - (abs(male_count - female_count) / total)
-                gender_balance_scores.append(balance * 100)
-    
-    if gender_balance_scores:
-        scores['Gender Balance'] = np.mean(gender_balance_scores)
-    
-    # 4. Travel Efficiency Score: Normalized score based on total travel time
-    # Lower travel time is better, so we'll invert it relative to a baseline
-    if 'Travel Time (min)' in assignments_df.columns:
-        total_travel = assignments_df['Travel Time (min)'].sum()
-        # Simple normalization (this could be improved with better scaling)
-        # Assuming max travel time per teacher is 60 minutes as a reasonable upper bound
-        max_possible = len(assignments_df) * 60
-        if max_possible > 0:
-            # Higher score is better, so we invert the ratio
-            scores['Travel Efficiency'] = max(0, 100 * (1 - (total_travel / max_possible)))
-    
-    return scores
 
 # Main app
 if st.button("🚀 Run Optimization"):
@@ -536,32 +522,35 @@ if st.button("🚀 Run Optimization"):
                 with st.form("manual_assignment"):
                     # Create a row for each teacher's assignment
                     for idx, row in st.session_state.edited_assignments.iterrows():
-                        col1, col2 = st.columns([2, 3])
-                        with col1:
-                            st.text_input("Teacher", 
-                                        value=f"{row['Teacher Name']} ({row['Teacher ID']})", 
-                                        key=f"teacher_{idx}", 
-                                        disabled=True)
-                        with col2:
-                            # Get current school name, default to first school if not found
-                            current_school_name = school_id_to_name.get(row['School ID'], school_options[0])
-                            current_school_idx = school_options.index(current_school_name) if current_school_name in school_options else 0
-                            
-                            # Create school selection dropdown
-                            new_school = st.selectbox(
-                                f"School for {row['Teacher Name']}",
-                                school_options,
-                                index=current_school_idx,
-                                key=f"school_{idx}",
-                                label_visibility="collapsed"
-                            )
-                            
-                            # Check if the selection has changed
-                            if new_school != current_school_name:
-                                changes_made = True
+                        teacher_name = row['Teacher Name']
+                        current_school = row.get('School Name', '')
+                        
+                        # Display teacher name
+                        st.markdown(f"**{teacher_name}**")
+                        
+                        # Get current school index, default to 0 if not found
+                        school_idx = (
+                            school_options.index(current_school)
+                            if current_school in school_options
+                            else 0
+                        )
+                        
+                        # School selection dropdown
+                        new_school = st.selectbox(
+                            f"Assign {teacher_name} to school",
+                            school_options,
+                            index=school_idx,
+                            key=f"school_select_{idx}",
+                            label_visibility="collapsed"
+                        )
+                        
+                        # Update assignment if changed
+                        if new_school != current_school:
+                            st.session_state.edited_assignments.at[idx, 'School Name'] = new_school
+                            st.session_state.edited_assignments.at[idx, 'School ID'] = school_id_to_name[new_school]
                     
-                    # Action buttons
-                    col1, col2, col3 = st.columns([1, 1, 2])
+                    # Form submission buttons
+                    col1, col2 = st.columns(2)
                     with col1:
                         save_clicked = st.form_submit_button("💾 Save Changes")
                     with col2:
@@ -575,7 +564,7 @@ if st.button("🚀 Run Optimization"):
                         
                         # Update the assignments with new selections
                         for idx, row in st.session_state.edited_assignments.iterrows():
-                            new_school_name = st.session_state[f"school_{idx}"]
+                            new_school_name = st.session_state[f"school_select_{idx}"]
                             if new_school_name != row['School Name']:  # Only update if changed
                                 new_school_id = schools_df[schools_df['name'] == new_school_name]['id'].iloc[0]
                                 st.session_state.edited_assignments.at[idx, 'School Name'] = new_school_name
@@ -638,14 +627,80 @@ if st.button("🚀 Run Optimization"):
 else:
     st.info("👈 Click 'Run Optimization' to start the teacher allocation process.")
     
-    # Show data preview
+    # Show data preview and allow manual assignment
     try:
-        teachers_df, schools_df, _ = load_data()
+        teachers_df, schools_df, travel_times_df = load_data()
+        
         with st.expander("📋 Preview Data"):
             st.subheader("Teachers Data")
             st.dataframe(teachers_df.head())
             
             st.subheader("Schools Data")
             st.dataframe(schools_df.head())
+        
+        # Create tentative assignments
+        if st.button("📋 Create Tentative Assignments"):
+            with st.spinner("Creating tentative assignments..."):
+                tentative_assignments = create_tentative_assignments(teachers_df, schools_df, travel_times_df)
+                
+                # Store in session state
+                st.session_state.edited_assignments = tentative_assignments
+                st.session_state.assignments_df = tentative_assignments.copy()
+                st.session_state.total_distance = tentative_assignments['Travel Time (min)'].sum()
+                st.session_state.avg_travel_time = tentative_assignments['Travel Time (min)'].mean()
+                st.session_state.schools_df = schools_df
+                
+                st.success("Tentative assignments created! You can now adjust them manually.")
+                st.rerun()
+        
+        # Show manual assignment interface if we have tentative assignments
+        if 'edited_assignments' in st.session_state:
+            st.subheader("✏️ Manual Assignment")
+            
+            # Create a form for editing assignments
+            with st.form("manual_assignment"):
+                # Get unique schools for the dropdown
+                school_options = schools_df['name'].tolist()
+                school_name_to_id = dict(zip(schools_df['name'], schools_df['id']))
+                
+                # Create a row for each teacher's assignment
+                for idx, row in st.session_state.edited_assignments.iterrows():
+                    # Display teacher name as a label
+                    st.markdown(f"**{row['name']}**")
+                    
+                    # Get current school name
+                    current_school_name = row.get('School Name', '')
+                    current_school_idx = school_options.index(current_school_name) if current_school_name in school_options else 0
+                    
+                    # Create school selection dropdown
+                    new_school = st.selectbox(
+                        f"Assign {row['name']} to school",
+                        school_options,
+                        index=current_school_idx,
+                        key=f"school_select_{idx}",
+                        label_visibility="collapsed"
+                    )
+                        
+                    # Update assignment if changed
+                    if new_school != current_school_name:
+                        st.session_state.edited_assignments.at[idx, 'School Name'] = new_school
+                        st.session_state.edited_assignments.at[idx, 'School ID'] = school_name_to_id[new_school]
+            
+                # Form submission buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.form_submit_button("💾 Save Changes"):
+                        # Update travel times and other metrics
+                        st.session_state.total_distance = st.session_state.edited_assignments['Travel Time (min)'].sum()
+                        st.session_state.avg_travel_time = st.session_state.edited_assignments['Travel Time (min)'].mean()
+                        st.session_state.assignments_df = st.session_state.edited_assignments.copy()
+                        st.success("Changes saved!")
+                        st.rerun()
+                
+                with col2:
+                    if st.form_submit_button("🔄 Update Scores"):
+                        st.rerun()
+    
     except Exception as e:
-        st.error(f"Failed to load default data. Please check the data files in the data/ directory. Error: {str(e)}")
+        st.error(f"An error occurred: {str(e)}")
+        st.error(traceback.format_exc())
