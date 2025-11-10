@@ -312,8 +312,41 @@ if st.button("🚀 Run Optimization"):
                 st.subheader("👨‍🏫 Teacher Assignments")
                 st.dataframe(assignments_df, use_container_width=True)
                 
+                # Display optimization priorities and scores
+                st.subheader("🎯 Optimization Priorities")
+                
+                # Priority descriptions
+                with st.expander("ℹ️ Priority Details"):
+                    st.markdown("""
+                    The optimization follows these priorities in order:
+                    1. **Staffing**: Ensures each school has 1 teacher per 7 students (max 4)
+                    2. **Bilingual**: Ensures at least one bilingual teacher per school
+                    3. **Gender Balance**: Balances male and female teachers
+                    4. **Travel Efficiency**: Minimizes total travel time for all teachers
+                    """)
+                
+                # Calculate and display scores for the optimized solution
+                optimized_scores = calculate_priority_scores(assignments_df, schools_df)
+                
+                # Create a DataFrame for visualization
+                scores_df = pd.DataFrame({
+                    'Priority': ['Staffing', 'Bilingual', 'Gender Balance', 'Travel Efficiency'],
+                    'Score (%)': [
+                        optimized_scores['Staffing'],
+                        optimized_scores['Bilingual'],
+                        optimized_scores['Gender Balance'],
+                        optimized_scores['Travel Efficiency']
+                    ]
+                })
+                
+                # Display scores in a bar chart
+                st.bar_chart(
+                    scores_df.set_index('Priority'),
+                    use_container_width=True
+                )
+                
                 # Visualizations
-                st.subheader("📈 Assignment Distribution")
+                st.subheader("📊 School Statistics")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.bar_chart(school_stats_df.set_index('School Name')['Teachers Assigned'])
@@ -415,18 +448,86 @@ if st.button("🚀 Run Optimization"):
                     elif save_clicked and not changes_made:
                         st.warning("No changes detected.")
                 
-                # Display the updated assignments with current fitness
-                st.subheader("📋 Updated Assignments")
+                # Function to calculate priority scores
+                def calculate_priority_scores(assignments_df, schools_df):
+                    # 1. Staffing score (% of schools meeting teacher requirements)
+                    school_sizes = schools_df.set_index('id')['size'].to_dict()
+                    
+                    # Calculate required teachers for each school (1 per 7 students, max 4)
+                    school_requirements = {}
+                    for school_id, size in school_sizes.items():
+                        required = min(4, max(1, int(np.ceil(size / 7))))
+                        school_requirements[school_id] = required
+                    
+                    # Count teachers per school
+                    teachers_per_school = assignments_df['School ID'].value_counts().to_dict()
+                    
+                    # Calculate staffing score
+                    staffing_score = 0
+                    for school_id, required in school_requirements.items():
+                        actual = teachers_per_school.get(school_id, 0)
+                        if actual >= required:
+                            staffing_score += 1
+                    staffing_score = (staffing_score / len(school_requirements)) * 100
+                    
+                    # 2. Bilingual score (% of schools with at least one bilingual)
+                    bilingual_schools = assignments_df[assignments_df['Type'] == 'Bilingual']['School ID'].nunique()
+                    bilingual_score = (bilingual_schools / len(school_requirements)) * 100
+                    
+                    # 3. Gender balance score (average balance across schools)
+                    gender_balance = []
+                    for school_id in school_requirements.keys():
+                        school_teachers = assignments_df[assignments_df['School ID'] == school_id]
+                        if len(school_teachers) > 0:
+                            male = (school_teachers['Gender'] == 'Male').sum()
+                            female = len(school_teachers) - male
+                            balance = 1 - (abs(male - female) / len(school_teachers))
+                            gender_balance.append(balance)
+                    gender_score = np.mean(gender_balance) * 100 if gender_balance else 0
+                    
+                    # 4. Travel distance (inverse, normalized)
+                    max_possible_distance = assignments_df['Travel Time (min)'].max() * len(assignments_df)
+                    if max_possible_distance > 0:
+                        travel_score = 100 * (1 - (assignments_df['Travel Time (min)'].sum() / max_possible_distance))
+                    else:
+                        travel_score = 100
+                    
+                    return {
+                        'Staffing': staffing_score,
+                        'Bilingual': bilingual_score,
+                        'Gender Balance': gender_score,
+                        'Travel Efficiency': travel_score
+                    }
                 
-                # Show summary metrics
-                col1, col2 = st.columns(2)
+                # Calculate scores for current assignments
+                current_scores = calculate_priority_scores(
+                    st.session_state.edited_assignments, 
+                    schools_df
+                )
+                
+                # Display priority scores
+                st.subheader("🎯 Priority Scores")
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Total Travel Time", f"{st.session_state.get('total_distance', 0):.1f} min")
+                    st.metric("Staffing", f"{current_scores['Staffing']:.1f}%")
+                    st.caption("% schools with required teachers")
                 with col2:
-                    st.metric("Avg Travel Time", f"{st.session_state.get('avg_travel_time', 0):.1f} min/teacher")
+                    st.metric("Bilingual", f"{current_scores['Bilingual']:.1f}%")
+                    st.caption("% schools with ≥1 bilingual")
+                with col3:
+                    st.metric("Gender Balance", f"{current_scores['Gender Balance']:.1f}%")
+                    st.caption("Average balance (100% = perfect)")
+                with col4:
+                    st.metric("Travel Efficiency", f"{current_scores['Travel Efficiency']:.1f}%")
+                    st.caption("100% = minimal travel time")
                 
                 # Display the updated assignments
+                st.subheader("📋 Updated Assignments")
                 st.dataframe(st.session_state.edited_assignments, use_container_width=True)
+                
+                # Add a button to update scores without saving changes
+                if st.button("🔄 Update Scores"):
+                    st.rerun()  # Just rerun to recalculate scores
                 
                 # Add a button to reset to original optimization
                 if st.button("🔄 Reset to Optimized Assignments"):
