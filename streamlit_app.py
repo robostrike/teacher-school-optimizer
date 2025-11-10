@@ -34,6 +34,12 @@ with st.sidebar:
     schools = st.file_uploader("Schools Data (CSV)", type="csv")
     stations = st.file_uploader("Travel Times (CSV)", type="csv")
     
+    # Fitness value display
+    if 'total_distance' in locals() or 'total_distance' in globals():
+        st.metric("Current Fitness (Total Distance)", 
+                 f"{total_distance:.2f} km" if 'total_distance' in locals() or 'total_distance' in globals() else "N/A",
+                 delta=None)
+    
     if st.button("🔍 View Sample Data"):
         teachers_df, schools_df, _ = load_data()
         if teachers_df is not None and schools_df is not None:
@@ -182,10 +188,21 @@ if st.button("🚀 Run Optimization"):
                         
                         # Recalculate total distance (placeholder - you might want to update this based on actual distances)
                         if 'Distance (km)' in assignments_df.columns:
-                            total_distance = assignments_df['Distance (km)'].sum()
+                            # Update the total_distance in session state to trigger a rerender
+                            st.session_state.total_distance = assignments_df['Distance (km)'].sum()
+                            total_distance = st.session_state.total_distance
+                            
+                            # Force a rerun to update the sidebar
+                            st.rerun()
                 
-                # Display the updated assignments
-                st.subheader("📋 Updated Assignments")
+                # Display the updated assignments with current fitness
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.subheader("📋 Updated Assignments")
+                with col2:
+                    if 'total_distance' in st.session_state:
+                        st.metric("Current Fitness", f"{st.session_state.total_distance:.2f} km")
+                
                 st.dataframe(st.session_state.edited_assignments, use_container_width=True)
 else:
     st.info("👈 Upload your data files or use the default dataset in the sidebar, then click 'Run Optimization'.")
