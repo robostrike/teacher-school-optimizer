@@ -18,12 +18,27 @@ The optimization aims to minimize the total travel distance for all teachers.
 def load_data():
     data_dir = Path("data")
     try:
+        # Load data
         teachers_df = pd.read_csv(teachers if teachers else data_dir / "teachers_copy.csv")
         schools_df = pd.read_csv(schools if schools else data_dir / "kidsduo_schools.csv")
         travel_times_df = pd.read_csv(stations if stations else data_dir / "station_travel_times.csv")
+        
+        # Ensure required columns exist and have proper types
+        if 'size' not in schools_df.columns:
+            schools_df['size'] = 20  # Default size if not present
+        
+        # Convert size to numeric, coerce errors to NaN, then fill with default
+        schools_df['size'] = pd.to_numeric(schools_df['size'], errors='coerce').fillna(20).astype(int)
+        
+        # Ensure station IDs are strings
+        if 'station_id' in teachers_df.columns:
+            teachers_df['station_id'] = teachers_df['station_id'].astype(str)
+        
         return teachers_df, schools_df, travel_times_df
     except Exception as e:
         st.error(f"Error loading data: {e}")
+        import traceback
+        st.error(traceback.format_exc())
         return None, None, None
 
 # File uploaders in sidebar
@@ -124,13 +139,23 @@ def optimize_teacher_allocation(teachers_df, schools_df, travel_times_df):
         
         # 2. School capacity constraints (4 teachers per 20-30 students)
         for j in range(num_schools):
-            school_size = schools_df.iloc[j].get('size', 20)  # Default to 20 if size not specified
-            min_teachers = (school_size // 30) * 4
-            max_teachers = ((school_size + 29) // 20) * 4  # Round up to nearest 20
+            # Ensure school size is a valid number, default to 20 if not
+            try:
+                school_size = float(schools_df.iloc[j].get('size', 20))
+                if pd.isna(school_size) or school_size <= 0:
+                    school_size = 20  # Default to 20 if size is invalid
+            except (ValueError, TypeError):
+                school_size = 20  # Default to 20 if conversion fails
+                
+            # Calculate min and max teachers based on school size
+            min_teachers = max(1, int((school_size // 30) * 4))  # At least 1 teacher, even for small schools
+            max_teachers = min(num_teachers, int(np.ceil((school_size / 20) * 4)))  # Don't exceed total teachers
             
             # Ensure at least min_teachers and at most max_teachers per school
-            prob += pulp.lpSum([x[(i, j)] for i in range(num_teachers)]) >= min_teachers
-            prob += pulp.lpSum([x[(i, j)] for i in range(num_teachers)]) <= max_teachers
+            if min_teachers > 0 and not np.isinf(min_teachers):
+                prob += pulp.lpSum([x[(i, j)] for i in range(num_teachers)]) >= min_teachers
+            if max_teachers > 0 and not np.isinf(max_teachers):
+                prob += pulp.lpSum([x[(i, j)] for i in range(num_teachers)]) <= max_teachers
             
             # 3. At least one bilingual teacher per school
             bilingual_teachers = [i for i, row in teachers_df.iterrows() 
