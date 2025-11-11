@@ -11,10 +11,12 @@ from typing import Optional, Tuple
 st.set_page_config(page_title="Teacher-School Manager", layout="wide")
 
 # File paths
+import os
 DATA_DIR = Path(__file__).parent / "data"
-TEACHERS_FILE = DATA_DIR / "teachers_copy.csv"
+TEACHERS_FILE = DATA_DIR / "teachers.csv"
 SCHOOLS_FILE = DATA_DIR / "kidsduo_schools.csv"
 TRAVEL_TIMES_FILE = DATA_DIR / "station_travel_times.csv"
+ASSIGNMENTS_FILE = DATA_DIR / "teacher_school_assignments.csv"
 
 @st.cache_data
 def load_teachers():
@@ -35,6 +37,41 @@ def load_teachers():
     return df
 
 @st.cache_data
+def load_assignments():
+    """Load teacher-school assignments from CSV"""
+    if not os.path.exists(ASSIGNMENTS_FILE):
+        return pd.DataFrame(columns=['teacher_id', 'school_id', 'assigned_date', 'is_current'])
+    return pd.read_csv(ASSIGNMENTS_FILE)
+
+def save_assignments(assignments_df):
+    """Save teacher-school assignments to CSV"""
+    assignments_df.to_csv(ASSIGNMENTS_FILE, index=False)
+
+def get_current_assignments(assignments_df):
+    """Get current assignments (where is_current is True)"""
+    return assignments_df[assignments_df['is_current'] == True]
+
+def assign_teacher_to_school(teacher_id, school_id, assignments_df):
+    """Assign a teacher to a school, updating previous assignments if needed"""
+    from datetime import datetime
+    
+    # Mark any existing current assignments as not current
+    mask = (assignments_df['teacher_id'] == teacher_id) & (assignments_df['is_current'] == True)
+    assignments_df.loc[mask, 'is_current'] = False
+    
+    # Add new assignment if school_id is not empty
+    if pd.notna(school_id) and school_id != '':
+        new_assignment = pd.DataFrame([{
+            'teacher_id': teacher_id,
+            'school_id': school_id,
+            'assigned_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'is_current': True
+        }])
+        assignments_df = pd.concat([assignments_df, new_assignment], ignore_index=True)
+    
+    return assignments_df
+
+@st.cache_data
 def load_schools():
     """Load school data and return as a dictionary of id: name"""
     df = pd.read_csv(SCHOOLS_FILE)
@@ -46,12 +83,25 @@ def save_teachers(teachers_df):
 
 # Load data
 teachers_df = load_teachers()
+assignments_df = load_assignments()
+current_assignments = get_current_assignments(assignments_df)
 schools = load_schools()
 
 # Add a 'No School' option
 school_options = [""] + list(schools.keys())
 school_display = {"": "No School"}
 school_display.update(schools)
+
+# Add current school to teachers for backward compatibility
+if not teachers_df.empty and not current_assignments.empty:
+    teachers_df = teachers_df.merge(
+        current_assignments[['teacher_id', 'school_id']],
+        left_on='id',
+        right_on='teacher_id',
+        how='left'
+    ).drop(columns=['teacher_id'])
+else:
+    teachers_df['school_id'] = None
 
 # App title
 st.title("Teacher-School Manager")
@@ -282,6 +332,9 @@ st.subheader("Teacher Directory")
 cols_per_row = 3
 total_teachers = len(teachers_df)
 
+# Create a copy of teachers for editing
+temp_teachers = teachers_df.copy()
+
 for i in range(0, total_teachers, cols_per_row):
     # Create a row of cards
     cols = st.columns(cols_per_row)
@@ -294,20 +347,22 @@ for i in range(0, total_teachers, cols_per_row):
             
         teacher = teachers_df.iloc[teacher_idx]
         current_school = teacher.get('school_id', '')
-        can_move = pd.isna(teacher.get('school_id')) or teacher.get('school_id') == ''
+        can_move = pd.isna(current_school) or current_school == ''
         
         with cols[col_idx]:
             with st.container(border=True):
-                # Header with name and type
-                st.markdown(f"### {teacher['name']}")
+                # Header with name, gender, and type
+                gender_icon = '♂️' if teacher.get('gender') == 'Male' else '♀️'
+                st.markdown(f"### {teacher['name']} {gender_icon}")
                 st.caption(f"{teacher['type']} | {teacher['station']}")
                 
                 # School selection
+                current_school_idx = school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0
                 new_school = st.selectbox(
                     "Assigned School",
                     options=school_options,
-                    index=school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0,
-                    key=f"school_{teacher_idx}",
+                    index=current_school_idx,
+                    key=f"school_{teacher['id']}",
                     format_func=lambda x: school_display.get(x, "No School")
                 )
                 temp_teachers.at[teacher_idx, 'school_id'] = new_school if new_school else None
@@ -315,24 +370,40 @@ for i in range(0, total_teachers, cols_per_row):
                 # Move preference
                 move = st.checkbox(
                     "Willing to Move",
-                    value=can_move or teacher.get('move', False),
+                    value=teacher.get('move', False),
                     disabled=can_move,
-                    key=f"move_{teacher_idx}",
+                    key=f"move_{teacher['id']}",
                     help="Check if teacher is willing to move to a different school"
                 )
                 temp_teachers.at[teacher_idx, 'move'] = move
                 
-                # Status indicator
-                if can_move:
-                    st.info("Reassignable", icon="ℹ️")
-                elif move:
-                    st.warning("Open to relocation", icon="🔄")
-                else:
-                    st.success("Stable assignment", icon="✅")
+                # Status indicator with color coding
+                status_container = st.container()
+                with status_container:
+                    if can_move:
+                        st.info("Reassignable", icon="ℹ️")
+                    elif move:
+                        st.warning("Open to relocation", icon="🔄")
+                    else:
+                        st.success("Stable assignment", icon="✅")
 
 # Save button
 if st.button("Save Changes"):
+    # Save teacher data
     save_teachers(temp_teachers)
+    
+    # Update assignments
+    for _, teacher in temp_teachers.iterrows():
+        current_school = teacher.get('school_id', '')
+        if pd.notna(current_school) and current_school != '':
+            assignments_df = assign_teacher_to_school(
+                teacher['id'], 
+                current_school,
+                assignments_df
+            )
+    
+    # Save assignments
+    save_assignments(assignments_df)
     st.success("Changes saved successfully!")
     st.rerun()
 
