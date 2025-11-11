@@ -54,44 +54,60 @@ st.write("Manage teacher assignments and move preferences")
 # Create form for editing
 temp_teachers = teachers_df.copy()
 
-# Display teachers in a table with editable fields
-for idx, teacher in teachers_df.iterrows():
-    with st.container():
-        cols = st.columns([1, 2, 2, 1])
-        with cols[0]:
-            st.write(f"**{teacher['name']}**")
-            st.caption(f"{teacher['type']} - {teacher['station']}")
-        
-        with cols[1]:
-            current_school = teacher.get('school_id', '')
-            new_school = st.selectbox(
-                "School",
-                options=school_options,
-                index=school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0,
-                key=f"school_{idx}",
-                format_func=lambda x: school_display.get(x, "No School")
-            )
-            temp_teachers.at[idx, 'school_id'] = new_school if new_school else None
-        
-        with cols[2]:
-            # If teacher has no school, they can always move
-            can_move = pd.isna(teacher.get('school_id')) or teacher.get('school_id') == ''
-            move_help = "Teacher has no school - can be assigned to any location" if can_move else "Check if teacher is willing to move"
+# Display teachers in a responsive grid of cards
+st.subheader("Teacher Directory")
+
+# Create a grid of cards (3 cards per row on large screens)
+cols_per_row = 3
+total_teachers = len(teachers_df)
+
+for i in range(0, total_teachers, cols_per_row):
+    # Create a row of cards
+    cols = st.columns(cols_per_row)
+    
+    # Fill the current row with cards
+    for col_idx in range(cols_per_row):
+        teacher_idx = i + col_idx
+        if teacher_idx >= total_teachers:
+            break
             
-            move = st.checkbox(
-                "Willing to Move",
-                value=can_move or teacher.get('move', False),
-                disabled=can_move,  # Disable if teacher has no school
-                key=f"move_{idx}",
-                help=move_help
-            )
-            temp_teachers.at[idx, 'move'] = move
-            
-            # If teacher has no school, show a note
-            if can_move:
-                st.caption("Can be assigned to any location")
+        teacher = teachers_df.iloc[teacher_idx]
+        current_school = teacher.get('school_id', '')
+        can_move = pd.isna(teacher.get('school_id')) or teacher.get('school_id') == ''
         
-        st.divider()
+        with cols[col_idx]:
+            with st.container(border=True):
+                # Header with name and type
+                st.markdown(f"### {teacher['name']}")
+                st.caption(f"{teacher['type']} | {teacher['station']}")
+                
+                # School selection
+                new_school = st.selectbox(
+                    "Assigned School",
+                    options=school_options,
+                    index=school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0,
+                    key=f"school_{teacher_idx}",
+                    format_func=lambda x: school_display.get(x, "No School")
+                )
+                temp_teachers.at[teacher_idx, 'school_id'] = new_school if new_school else None
+                
+                # Move preference
+                move = st.checkbox(
+                    "Willing to Move",
+                    value=can_move or teacher.get('move', False),
+                    disabled=can_move,
+                    key=f"move_{teacher_idx}",
+                    help="Check if teacher is willing to move to a different school"
+                )
+                temp_teachers.at[teacher_idx, 'move'] = move
+                
+                # Status indicator
+                if can_move:
+                    st.info("Available for assignment", icon="ℹ️")
+                elif move:
+                    st.warning("Open to relocation", icon="🔄")
+                else:
+                    st.success("Stable assignment", icon="✅")
 
 # Save button
 if st.button("Save Changes"):
