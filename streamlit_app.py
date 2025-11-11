@@ -117,45 +117,71 @@ def load_travel_times():
         return pd.DataFrame()
 
 def get_travel_time(origin_id, dest_id, travel_times_df):
-    """Get travel time between two stations using their IDs"""
-    if travel_times_df is None or travel_times_df.empty:
+    """Get travel time between two stations using their UUIDs"""
+    try:
+        # Debug: Print input parameters
+        print(f"\n=== get_travel_time called ===")
+        print(f"Origin ID: {origin_id} (type: {type(origin_id)})")
+        print(f"Dest ID:   {dest_id} (type: {type(dest_id)})")
+        
+        if travel_times_df is None or travel_times_df.empty:
+            print("Error: travel_times_df is None or empty")
+            return float('inf')
+        
+        if pd.isna(origin_id) or pd.isna(dest_id):
+            print(f"Error: Missing station IDs - origin: {origin_id}, dest: {dest_id}")
+            return float('inf')
+            
+        # Check if columns exist in the DataFrame
+        required_columns = ['origin_uuid', 'destination_uuid', 'travel_min']
+        if not all(col in travel_times_df.columns for col in required_columns):
+            print(f"Error: Missing required columns in travel_times_df. Available columns: {travel_times_df.columns.tolist()}")
+            return float('inf')
+        
+        # Check direct direction (origin -> destination)
+        direct = travel_times_df[
+            (travel_times_df['origin_uuid'] == origin_id) & 
+            (travel_times_df['destination_uuid'] == dest_id)
+        ]
+        
+        if not direct.empty:
+            print(f"Found direct route: {len(direct)} matches")
+            print(f"Sample travel time: {direct['travel_min'].iloc[0]} min")
+            return direct['travel_min'].iloc[0]
+        
+        print("No direct route found, checking reverse direction...")
+        
+        # Check reverse direction (destination -> origin)
+        reverse = travel_times_df[
+            (travel_times_df['origin_uuid'] == dest_id) & 
+            (travel_times_df['destination_uuid'] == origin_id)
+        ]
+        
+        if not reverse.empty:
+            print(f"Found reverse route: {len(reverse)} matches")
+            print(f"Sample travel time: {reverse['travel_min'].iloc[0]} min")
+            return reverse['travel_min'].iloc[0]
+            
+        print("No route found in either direction")
+        
+        # Debug: Check if either station exists in the travel times data
+        origin_exists = (travel_times_df['origin_uuid'] == origin_id).any() or \
+                       (travel_times_df['destination_uuid'] == origin_id).any()
+        dest_exists = (travel_times_df['origin_uuid'] == dest_id).any() or \
+                     (travel_times_df['destination_uuid'] == dest_id).any()
+        
+        print(f"Origin station in data: {'Yes' if origin_exists else 'No'}")
+        print(f"Destination station in data: {'Yes' if dest_exists else 'No'}")
+        
+        return float('inf')  # No route found
+        
+    except Exception as e:
+        print(f"Error in get_travel_time: {str(e)}")
+        print(f"Origin ID: {origin_id}, Dest ID: {dest_id}")
+        if 'travel_times_df' in locals():
+            print(f"DataFrame columns: {travel_times_df.columns.tolist()}")
+            print(f"DataFrame sample: {travel_times_df.head(1).to_dict()}")
         return float('inf')
-    
-    # Check both directions since the data might not be symmetric
-    direct = travel_times_df[
-        (travel_times_df['origin_uuid'] == origin_id) & 
-        (travel_times_df['destination_uuid'] == dest_id)
-    ]
-    
-    if not direct.empty:
-        return direct['travel_min'].iloc[0]
-    
-    # Check reverse direction
-    reverse = travel_times_df[
-        (travel_times_df['origin_uuid'] == dest_id) & 
-        (travel_times_df['destination_uuid'] == origin_id)
-    ]
-    
-    if not reverse.empty:
-        return reverse['travel_min'].iloc[0]
-    
-    # If no direct route found, try to find a path through intermediate stations
-    # This is a simplified approach - for a production app, you'd want to implement
-    # a proper pathfinding algorithm
-    if len(travel_times_df) > 0:
-        # Get all possible paths through one intermediate station
-        first_leg = travel_times_df[travel_times_df['origin_uuid'] == origin_id]
-        if not first_leg.empty:
-            for _, leg1 in first_leg.iterrows():
-                second_leg = travel_times_df[
-                    (travel_times_df['origin_uuid'] == leg1['destination_uuid']) &
-                    (travel_times_df['destination_uuid'] == dest_id)
-                ]
-                if not second_leg.empty:
-                    # Return the sum of both legs
-                    return leg1['travel_min'] + second_leg['travel_min'].iloc[0]
-    
-    return float('inf')  # No route found
 
 def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
     # Create a base map centered on Tokyo with settings to prevent clustering
@@ -187,15 +213,32 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         is_within_range = False
         travel_time = float('inf')
         if selected_school is not None and 'station_uuid' in teacher and 'station_uuid' in selected_school:
+            teacher_station = teacher['station_uuid']
+            school_station = selected_school['station_uuid']
+            
+            # Debug: Print station information
+            debug_info = f"""
+            === DEBUG INFO ===
+            Teacher: {teacher['name']}
+            Teacher Station UUID: {teacher_station}
+            School: {selected_school['name']}
+            School Station UUID: {school_station}
+            """
+            print(debug_info)
+            
             try:
                 travel_time = get_travel_time(
-                    teacher['station_uuid'], 
-                    selected_school['station_uuid'],
+                    teacher_station,
+                    school_station,
                     travel_times_df
                 )
+                print(f"Calculated travel time: {travel_time} minutes")
                 is_within_range = travel_time <= 60
+                print(f"Is within 60 minutes: {is_within_range}")
             except Exception as e:
-                st.warning(f"Error calculating travel time: {e}")
+                error_msg = f"Error calculating travel time: {e}"
+                print(error_msg)
+                st.warning(error_msg)
                 is_within_range = False
         
         # Determine icon color based on status and range
