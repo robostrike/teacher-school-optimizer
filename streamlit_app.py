@@ -183,7 +183,7 @@ for i in range(0, total_teachers, cols_per_row):
                 
                 # Status indicator
                 if can_move:
-                    st.info("Available for assignment", icon="ℹ️")
+                    st.info("Reassignable", icon="ℹ️")
                 elif move:
                     st.warning("Open to relocation", icon="🔄")
                 else:
