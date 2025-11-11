@@ -4,6 +4,8 @@ import folium
 from streamlit_folium import folium_static
 from pathlib import Path
 from folium.plugins import MarkerCluster
+from folium import Icon
+from typing import Optional, Tuple
 
 # Set page config
 st.set_page_config(page_title="Teacher-School Manager", layout="wide")
@@ -12,6 +14,7 @@ st.set_page_config(page_title="Teacher-School Manager", layout="wide")
 DATA_DIR = Path(__file__).parent / "data"
 TEACHERS_FILE = DATA_DIR / "teachers_copy.csv"
 SCHOOLS_FILE = DATA_DIR / "kidsduo_schools.csv"
+TRAVEL_TIMES_FILE = DATA_DIR / "station_travel_times.csv"
 
 @st.cache_data
 def load_teachers():
@@ -54,56 +57,116 @@ school_display.update(schools)
 st.title("Teacher-School Manager")
 
 # Create a map to display teachers and schools
-def create_map(teachers_df, schools_df):
+@st.cache_data
+def load_travel_times():
+    """Load and process travel times data"""
+    try:
+        return pd.read_csv(TRAVEL_TIMES_FILE)
+    except Exception as e:
+        st.error(f"Error loading travel times: {e}")
+        return pd.DataFrame()
+
+def get_travel_time(origin_id, destination_id, travel_times_df):
+    """Get travel time between two stations in minutes."""
+    if pd.isna(origin_id) or pd.isna(destination_id) or origin_id == '' or destination_id == '':
+        return float('inf')
+        
+    # Check direct route
+    direct = travel_times_df[
+        (travel_times_df['origin_uuid'] == origin_id) & 
+        (travel_times_df['destination_uuid'] == destination_id)
+    ]
+    
+    if not direct.empty:
+        return direct['travel_min'].iloc[0]
+    
+    # Check reverse route
+    reverse = travel_times_df[
+        (travel_times_df['origin_uuid'] == destination_id) & 
+        (travel_times_df['destination_uuid'] == origin_id)
+    ]
+    
+    if not reverse.empty:
+        return reverse['travel_min'].iloc[0]
+    
+    return float('inf')  # No route found
+
+def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
     # Create a base map centered on Tokyo with settings to prevent clustering
     m = folium.Map(
         location=[35.6895, 139.6917],
         zoom_start=11,
-        min_zoom=10,  # Prevent zooming out too far where points would overlap too much
-        max_zoom=18,  # Maximum zoom level
-        min_lat=35.3,  # Approximate bounds for Tokyo area
+        min_zoom=10,
+        max_zoom=18,
+        min_lat=35.3,
         max_lat=35.9,
         min_lon=139.4,
         max_lon=140.0,
     )
     
+    # Get selected school data if any
+    selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0] if selected_school_id else None
+    
     # Add markers for each teacher
     for _, teacher in teachers_df.iterrows():
-        # Skip teachers without location data
         if pd.isna(teacher.get('station_lat')) or pd.isna(teacher.get('station_lon')):
             continue
             
-        # Determine icon color based on status
-        if pd.isna(teacher.get('school_id')) or teacher.get('school_id') == '':
+        # Determine if teacher is within 60 minutes of selected school
+        is_within_range = False
+        if selected_school is not None and 'station_id' in teacher and 'station_id' in selected_school:
+            travel_time = get_travel_time(
+                teacher['station_id'], 
+                selected_school['station_id'],
+                travel_times_df
+            )
+            is_within_range = travel_time <= 60
+        
+        # Determine icon color based on status and range
+        if is_within_range:
+            color = 'purple'  # Within 60 minutes of selected school
+        elif pd.isna(teacher.get('school_id')) or teacher.get('school_id') == '':
             color = 'blue'  # Available for assignment
         elif teacher.get('move', False):
             color = 'orange'  # Willing to move
         else:
             color = 'green'  # Stable assignment
         
-        # Create a circle marker instead of the default marker
+        # Add popup with travel time if applicable
+        popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
+        if is_within_range and 'station' in selected_school:
+            popup_text += f"\n{travel_time:.0f} min from {selected_school['name']}"
+        
+        # Create a circle marker
         folium.CircleMarker(
             location=[teacher['station_lat'], teacher['station_lon']],
-            radius=5,  # Size of the dot
+            radius=7 if is_within_range else 5,
             color=color,
             fill=True,
             fill_color=color,
             fill_opacity=0.7,
-            popup=f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}",
+            weight=2 if is_within_range else 1,
+            popup=popup_text,
             tooltip=f"Teacher: {teacher['name']}"
         ).add_to(m)
     
-    # Add markers for schools as individual dots
+    # Add markers for schools
     for _, school in schools_df.iterrows():
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
-            folium.CircleMarker(
+            is_selected = school['id'] == selected_school_id
+            # Create a pin marker for the school
+            folium.Marker(
                 location=[school['latitude'], school['longitude']],
                 popup=f"School: {school['name']}\n{school['station']}",
-                tooltip=f"School: {school['name']}"
+                tooltip=f"School: {school['name']}",
+                icon=Icon(
+                    color='red',
+                    icon='info-sign',  # Using info-sign as it's a clear pin icon
+                    prefix='glyphicon',  # Using glyphicon for the pin icon
+                    icon_size=(20, 30) if is_selected else (16, 25),  # Larger if selected
+                    icon_anchor=(10, 30) if is_selected else (8, 25)  # Adjust anchor for the pointy end
+                )
             ).add_to(m)
-    
-    # Add layer control
-    folium.LayerControl().add_to(m)
     
     return m
 
@@ -135,11 +198,60 @@ def add_teacher_locations(teachers_df, _):
 schools_df = load_schools_with_locations()
 teachers_df = load_teachers()
 teachers_df = add_teacher_locations(teachers_df, schools_df)
+travel_times_df = load_travel_times()
+
+# School selection for filtering
+st.sidebar.subheader("Filter by School")
+selected_school_id = st.sidebar.selectbox(
+    "Select a school to see teachers within 60 minutes",
+    [""] + sorted(schools_df['id'].tolist()),
+    format_func=lambda x: schools_df[schools_df['id'] == x]['name'].iloc[0] if x else "All Schools"
+)
 
 # Display the map
 st.subheader("Teacher and School Locations")
-map_fig = create_map(teachers_df, schools_df)
+map_fig = create_map(teachers_df, schools_df, selected_school_id if selected_school_id else None, travel_times_df)
 folium_static(map_fig, width=1200, height=500)
+
+# Show teachers within 60 minutes of selected school
+if selected_school_id:
+    selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0]
+    st.subheader(f"Teachers within 60 minutes of {selected_school['name']}")
+    
+    # Filter teachers within 60 minutes
+    teachers_within_range = []
+    for _, teacher in teachers_df.iterrows():
+        if 'station_id' not in teacher or pd.isna(teacher['station_id']) or teacher['station_id'] == '':
+            continue
+            
+        travel_time = get_travel_time(
+            teacher['station_id'],
+            selected_school['station_id'],
+            travel_times_df
+        )
+        
+        if travel_time <= 60:  # 60 minutes threshold
+            teacher_copy = teacher.copy()
+            teacher_copy['travel_time'] = f"{int(travel_time)} min"
+            teachers_within_range.append(teacher_copy)
+    
+    if teachers_within_range:
+        # Display as a nice table
+        result_df = pd.DataFrame(teachers_within_range)
+        result_df = result_df[['name', 'type', 'station', 'travel_time']]
+        result_df.columns = ['Name', 'Type', 'Station', 'Travel Time']
+        st.dataframe(
+            result_df,
+            column_config={
+                "Name": "Teacher Name",
+                "Type": "Teacher Type",
+                "Station": "Nearest Station",
+                "Travel Time": "Travel Time"
+            },
+            use_container_width=True
+        )
+    else:
+        st.info("No teachers found within 60 minutes of the selected school.")
 
 st.write("Manage teacher assignments and move preferences")
 
