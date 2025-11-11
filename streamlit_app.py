@@ -61,23 +61,29 @@ if st.button("🔄 Reset Changes"):
 # Configure the grid
 gb = GridOptionsBuilder.from_dataframe(st.session_state.edited_teachers)
 
-# Define column definitions
-school_editor = {
-    'field': 'school_id',
-    'cellEditor': 'agSelectCellEditor',
-    'cellEditorParams': {
-        'values': [s['value'] for s in school_options],
-        'valueFormatter': "(params) => params.value ? params.value : 'Unassigned'"
-    },
-    'valueFormatter': "(params) => params.value ? params.value : 'Unassigned'"
-}
+# Configure columns
+gb.configure_columns(['id', 'name', 'type', 'station'], editable=False)
 
-gb.configure_column('id', headerName='ID', editable=False)
-gb.configure_column('name', headerName='Name', editable=False)
-gb.configure_column('type', headerName='Type', editable=False)
-gb.configure_column('station', headerName='Station', editable=False)
-gb.configure_column('school_id', headerName='School', **school_editor)
-gb.configure_column('move', headerName='Willing to Move', editable=True, cellRenderer='agCheckboxCellRenderer')
+# Configure school_id column with dropdown
+gb.configure_column(
+    'school_id', 
+    headerName='School',
+    editable=True,
+    cellEditor='agSelectCellEditor',
+    cellEditorParams={
+        'values': [s['value'] for s in school_options if s['value'] != '']
+    },
+    valueFormatter="(params) => params.value ? params.value : 'Unassigned'"
+)
+
+# Configure move column with checkbox
+gb.configure_column(
+    'move', 
+    headerName='Willing to Move', 
+    editable=True, 
+    cellRenderer='agCheckboxCellRenderer',
+    cellEditor='agCheckboxCellEditor'
+)
 
 gb.configure_default_column(editable=True, filterable=True, sortable=True, resizable=True)
 
