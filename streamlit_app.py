@@ -415,22 +415,20 @@ if selected_school_id:
         # Add gender icons
         result_df['Gender'] = result_df['gender'].apply(lambda x: '♂️' if x == 'Male' else '♀️')
         
-        # Prepare display columns without the checkbox
+        # Prepare display columns with the correct final names
         display_cols = ['name', 'Gender', 'type', 'station', 'travel_time']
-        display_df = result_df[display_cols]
-        display_df.columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
+        new_columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
+        display_df = result_df[display_cols].copy()
+        display_df.columns = new_columns
         
         # Display styled DataFrame
         def color_row(row):
-            # Use 'type' instead of 'Type' since we're applying this before column renaming
-            color = '#e6f3ff' if row['type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
+            # Use the final column name 'Type' since we've already renamed the columns
+            color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
             return ['background-color: ' + color] * len(row)
         
-        # Apply styling before renaming columns
+        # Apply styling with the final column names
         styled_df = display_df.style.apply(color_row, axis=1)
-        
-        # Rename columns after applying styles
-        display_df.columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
         
         # Display the table without the index
         st.dataframe(
