@@ -98,10 +98,6 @@ def create_map(teachers_df, schools_df):
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
             folium.CircleMarker(
                 location=[school['latitude'], school['longitude']],
-                color='red',
-                fill=True,
-                fill_color='red',
-                fill_opacity=0.7,
                 popup=f"School: {school['name']}\n{school['station']}",
                 tooltip=f"School: {school['name']}"
             ).add_to(m)
