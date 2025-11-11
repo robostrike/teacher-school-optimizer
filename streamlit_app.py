@@ -1,9 +1,15 @@
 import streamlit as st
 import pandas as pd
+import json
 from pathlib import Path
+from streamlit_draggable_list import draggable_list
 
 # Set page config
-st.set_page_config(page_title="Teacher-School Manager", layout="wide")
+st.set_page_config(
+    page_title="Teacher-School Manager",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # File paths
 DATA_DIR = Path(__file__).parent / "data"
@@ -14,15 +20,14 @@ SCHOOLS_FILE = DATA_DIR / "kidsduo_schools.csv"
 def load_teachers():
     """Load teacher data from CSV"""
     df = pd.read_csv(TEACHERS_FILE)
-    # Ensure 'move' column is boolean, defaulting to False if empty
     df['move'] = df['move'].fillna('false').str.lower() == 'true'
     return df
 
 @st.cache_data
 def load_schools():
-    """Load school data and return as a dictionary of id: name"""
+    """Load school data"""
     df = pd.read_csv(SCHOOLS_FILE)
-    return df.set_index('id')['name'].to_dict()
+    return df
 
 def save_teachers(teachers_df):
     """Save teacher data back to CSV"""
@@ -30,66 +35,116 @@ def save_teachers(teachers_df):
 
 # Load data
 teachers_df = load_teachers()
-schools = load_schools()
+schools_df = load_schools()
+
+# Convert to list of dicts for draggable components
+teachers = teachers_df.to_dict('records')
+schools = schools_df.to_dict('records')
 
 # Add a 'No School' option
-school_options = [""] + list(schools.keys())
-school_display = {"": "No School"}
-school_display.update(schools)
+no_school = {"id": "", "name": "Unassigned Teachers"}
+schools.insert(0, no_school)
+
+# Initialize session state for drag and drop
+if 'teacher_assignments' not in st.session_state:
+    st.session_state.teacher_assignments = {}
+    for teacher in teachers:
+        st.session_state.teacher_assignments[teacher['id']] = teacher.get('school_id', '')
 
 # App title
-st.title("Teacher-School Manager")
-st.write("Manage teacher assignments and move preferences")
+st.title("🎓 Teacher-School Manager")
+st.write("Drag and drop teachers to assign them to schools")
 
-# Create form for editing
-temp_teachers = teachers_df.copy()
+# Split the screen into two columns
+left_col, right_col = st.columns([1, 1])
 
-# Display teachers in a table with editable fields
-for idx, teacher in teachers_df.iterrows():
-    with st.container():
-        cols = st.columns([1, 2, 2, 1])
-        with cols[0]:
-            st.write(f"**{teacher['name']}**")
-            st.caption(f"{teacher['type']} - {teacher['station']}")
+with left_col:
+    st.header("🏫 Schools")
+    
+    # Create a container for each school
+    for school in schools:
+        school_id = school['id']
+        school_name = school.get('name', 'Unassigned')
         
-        with cols[1]:
-            current_school = teacher.get('school_id', '')
-            new_school = st.selectbox(
-                "School",
-                options=school_options,
-                index=school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0,
-                key=f"school_{idx}",
-                format_func=lambda x: school_display.get(x, "No School")
-            )
-            temp_teachers.at[idx, 'school_id'] = new_school if new_school else None
+        # Filter teachers assigned to this school
+        assigned_teachers = [
+            t for t in teachers 
+            if st.session_state.teacher_assignments.get(t['id'], '') == school_id
+        ]
         
-        with cols[2]:
-            # If teacher has no school, they can always move
-            can_move = pd.isna(teacher.get('school_id')) or teacher.get('school_id') == ''
-            move_help = "Teacher has no school - can be assigned to any location" if can_move else "Check if teacher is willing to move"
+        with st.expander(f"{school_name} ({len(assigned_teachers)} teachers)", expanded=True):
+            # Create a list of teacher cards for this school
+            teacher_cards = []
+            for teacher in assigned_teachers:
+                card = {
+                    'id': teacher['id'],
+                    'title': teacher['name'],
+                    'content': f"{teacher['type']} | {teacher['station']}",
+                    'data': json.dumps(teacher)
+                }
+                teacher_cards.append(card)
             
-            move = st.checkbox(
-                "Willing to Move",
-                value=can_move or teacher.get('move', False),
-                disabled=can_move,  # Disable if teacher has no school
-                key=f"move_{idx}",
-                help=move_help
-            )
-            temp_teachers.at[idx, 'move'] = move
-            
-            # If teacher has no school, show a note
-            if can_move:
-                st.caption("Can be assigned to any location")
-        
-        st.divider()
+            # Create a drop zone for this school
+            if teacher_cards:
+                result = draggable_list(
+                    items=teacher_cards,
+                    on_drag_end=lambda x: None,  # We'll handle updates in the callback
+                    key=f"school_{school_id}"
+                )
 
-# Save button
-if st.button("Save Changes"):
-    save_teachers(temp_teachers)
-    st.success("Changes saved successfully!")
+with right_col:
+    st.header("👥 Unassigned Teachers")
+    
+    # Show unassigned teachers
+    unassigned_teachers = [
+        t for t in teachers 
+        if not st.session_state.teacher_assignments.get(t['id']) 
+        and pd.isna(t.get('school_id'))
+    ]
+    
+    if not unassigned_teachers:
+        st.info("All teachers have been assigned to schools!")
+    else:
+        for teacher in unassigned_teachers:
+            with st.container(border=True):
+                st.markdown(f"**{teacher['name']}**")
+                st.caption(f"{teacher['type']} | {teacher['station']}")
+                
+                # Add a button to assign to school
+                selected_school = st.selectbox(
+                    "Assign to school",
+                    options=[s['id'] for s in schools if s['id'] != ''],
+                    format_func=lambda x: next((s['name'] for s in schools if s['id'] == x), "Select a school"),
+                    key=f"assign_{teacher['id']}"
+                )
+                
+                if st.button("Assign", key=f"btn_assign_{teacher['id']}"):
+                    st.session_state.teacher_assignments[teacher['id']] = selected_school
+                    st.rerun()
+
+# Save changes
+if st.button("💾 Save All Assignments"):
+    # Update the teachers dataframe with new assignments
+    for idx, teacher in teachers_df.iterrows():
+        teacher_id = teacher['id']
+        if teacher_id in st.session_state.teacher_assignments:
+            teachers_df.at[idx, 'school_id'] = st.session_state.teacher_assignments[teacher_id]
+    
+    # Save to CSV
+    save_teachers(teachers_df)
+    st.success("Teacher assignments saved successfully!")
     st.rerun()
 
-# Display current data
-expander = st.expander("View Raw Data")
+# Display current assignments
+expander = st.expander("📊 Current Assignments Overview")
 with expander:
-    st.dataframe(teachers_df)
+    st.dataframe(
+        teachers_df[['name', 'type', 'station', 'school_id']].merge(
+            schools_df[['id', 'name']],
+            left_on='school_id',
+            right_on='id',
+            how='left'
+        ).rename(columns={'name_y': 'school_name', 'name_x': 'teacher_name'})
+        [['teacher_name', 'type', 'station', 'school_name']],
+        hide_index=True
+    )
