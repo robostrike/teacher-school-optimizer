@@ -8,7 +8,7 @@ from folium import Icon
 from typing import Optional, Tuple
 
 # Set page config
-st.set_page_config(page_title="Teacher-School Manager", layout="wide")
+st.set_page_config(page_title="Teacher Optimizer", layout="wide")
 
 # File paths
 import os
@@ -274,7 +274,6 @@ selected_school_id = st.sidebar.selectbox(
 )
 
 # Display the map
-st.subheader("Teacher and School Locations")
 map_fig = create_map(teachers_df, schools_df, selected_school_id if selected_school_id else None, travel_times_df)
 folium_static(map_fig, width=1200, height=500)
 
