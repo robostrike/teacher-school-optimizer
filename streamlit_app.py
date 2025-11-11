@@ -1,14 +1,12 @@
 import streamlit as st
 import pandas as pd
-import json
 from pathlib import Path
-from streamlit_draggable_list import draggable_list
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 # Set page config
 st.set_page_config(
     page_title="Teacher-School Manager",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 # File paths
@@ -21,7 +19,7 @@ def load_teachers():
     """Load teacher data from CSV"""
     df = pd.read_csv(TEACHERS_FILE)
     df['move'] = df['move'].fillna('false').str.lower() == 'true'
-    return df
+    return df.fillna('')  # Replace NaN with empty string for display
 
 @st.cache_data
 def load_schools():
@@ -37,99 +35,88 @@ def save_teachers(teachers_df):
 teachers_df = load_teachers()
 schools_df = load_schools()
 
-# Convert to list of dicts for draggable components
-teachers = teachers_df.to_dict('records')
-schools = schools_df.to_dict('records')
+# Prepare school options for dropdown
+school_options = [{'label': row['name'], 'value': row['id']} for _, row in schools_df.iterrows()]
+school_dict = {row['id']: row['name'] for _, row in schools_df.iterrows()}
 
 # Add a 'No School' option
-no_school = {"id": "", "name": "Unassigned Teachers"}
-schools.insert(0, no_school)
-
-# Initialize session state for drag and drop
-if 'teacher_assignments' not in st.session_state:
-    st.session_state.teacher_assignments = {}
-    for teacher in teachers:
-        st.session_state.teacher_assignments[teacher['id']] = teacher.get('school_id', '')
+school_options.insert(0, {'label': 'Unassigned', 'value': ''})
+school_dict[''] = 'Unassigned'
 
 # App title
 st.title("🎓 Teacher-School Manager")
-st.write("Drag and drop teachers to assign them to schools")
+st.write("Assign teachers to schools using the interactive table below")
 
-# Split the screen into two columns
-left_col, right_col = st.columns([1, 1])
+# Create a copy of the teachers dataframe for editing
+if 'edited_teachers' not in st.session_state:
+    st.session_state.edited_teachers = teachers_df.copy()
 
-with left_col:
-    st.header("🏫 Schools")
-    
-    # Create a container for each school
-    for school in schools:
-        school_id = school['id']
-        school_name = school.get('name', 'Unassigned')
-        
-        # Filter teachers assigned to this school
-        assigned_teachers = [
-            t for t in teachers 
-            if st.session_state.teacher_assignments.get(t['id'], '') == school_id
-        ]
-        
-        with st.expander(f"{school_name} ({len(assigned_teachers)} teachers)", expanded=True):
-            # Create a list of teacher cards for this school
-            teacher_cards = []
-            for teacher in assigned_teachers:
-                card = {
-                    'id': teacher['id'],
-                    'title': teacher['name'],
-                    'content': f"{teacher['type']} | {teacher['station']}",
-                    'data': json.dumps(teacher)
-                }
-                teacher_cards.append(card)
-            
-            # Create a drop zone for this school
-            if teacher_cards:
-                result = draggable_list(
-                    items=teacher_cards,
-                    on_drag_end=lambda x: None,  # We'll handle updates in the callback
-                    key=f"school_{school_id}"
-                )
+# Add a button to reset changes
+if st.button("🔄 Reset Changes"):
+    st.session_state.edited_teachers = teachers_df.copy()
+    st.rerun()
 
-with right_col:
-    st.header("👥 Unassigned Teachers")
-    
-    # Show unassigned teachers
-    unassigned_teachers = [
-        t for t in teachers 
-        if not st.session_state.teacher_assignments.get(t['id']) 
-        and pd.isna(t.get('school_id'))
-    ]
-    
-    if not unassigned_teachers:
-        st.info("All teachers have been assigned to schools!")
-    else:
-        for teacher in unassigned_teachers:
-            with st.container(border=True):
-                st.markdown(f"**{teacher['name']}**")
-                st.caption(f"{teacher['type']} | {teacher['station']}")
-                
-                # Add a button to assign to school
-                selected_school = st.selectbox(
-                    "Assign to school",
-                    options=[s['id'] for s in schools if s['id'] != ''],
-                    format_func=lambda x: next((s['name'] for s in schools if s['id'] == x), "Select a school"),
-                    key=f"assign_{teacher['id']}"
-                )
-                
-                if st.button("Assign", key=f"btn_assign_{teacher['id']}"):
-                    st.session_state.teacher_assignments[teacher['id']] = selected_school
-                    st.rerun()
+# Configure the grid
+gb = GridOptionsBuilder.from_dataframe(st.session_state.edited_teachers)
 
-# Save changes
-if st.button("💾 Save All Assignments"):
-    # Update the teachers dataframe with new assignments
-    for idx, teacher in teachers_df.iterrows():
-        teacher_id = teacher['id']
-        if teacher_id in st.session_state.teacher_assignments:
-            teachers_df.at[idx, 'school_id'] = st.session_state.teacher_assignments[teacher_id]
-    
+# Define column definitions
+school_editor = {
+    'field': 'school_id',
+    'cellEditor': 'agSelectCellEditor',
+    'cellEditorParams': {
+        'values': [s['value'] for s in school_options],
+        'valueFormatter': "(params) => params.value ? params.value : 'Unassigned'"
+    },
+    'valueFormatter': "(params) => params.value ? params.value : 'Unassigned'"
+}
+
+gb.configure_column('id', headerName='ID', editable=False)
+gb.configure_column('name', headerName='Name', editable=False)
+gb.configure_column('type', headerName='Type', editable=False)
+gb.configure_column('station', headerName='Station', editable=False)
+gb.configure_column('school_id', headerName='School', **school_editor)
+gb.configure_column('move', headerName='Willing to Move', editable=True, cellRenderer='agCheckboxCellRenderer')
+
+gb.configure_default_column(editable=True, filterable=True, sortable=True, resizable=True)
+
+gb.configure_grid_options(
+    enableRangeSelection=True,
+    rowSelection='multiple',
+    suppressRowClickSelection=True,
+    pagination=True,
+    paginationPageSize=20,
+    domLayout='autoHeight',
+    defaultColDef={
+        'editable': False,
+        'filter': True,
+        'sortable': True,
+        'resizable': True,
+        'floatingFilter': True
+    }
+)
+
+grid_options = gb.build()
+
+# Display the grid
+response = AgGrid(
+    st.session_state.edited_teachers,
+    gridOptions=grid_options,
+    height=600,
+    width='100%',
+    theme='streamlit',
+    update_mode='VALUE_CHANGED',
+    allow_unsafe_jscode=True,
+    enable_enterprise_modules=False
+)
+
+# Update the dataframe with any changes
+if response['data'] is not None:
+    st.session_state.edited_teachers = response['data']
+
+# Add a save button
+if st.button("💾 Save Changes"):
+    # Update the original dataframe
+    teachers_df = st.session_state.edited_teachers
     # Save to CSV
     save_teachers(teachers_df)
     st.success("Teacher assignments saved successfully!")

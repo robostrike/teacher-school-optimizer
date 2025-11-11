@@ -4,4 +4,4 @@ numpy
 pulp
 networkx
 ortools
-streamlit-draggable-list
+streamlit-aggrid
