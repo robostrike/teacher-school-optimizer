@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import folium
-import traceback
 from streamlit_folium import folium_static
 from pathlib import Path
 from folium.plugins import MarkerCluster
@@ -119,34 +118,25 @@ def load_travel_times():
 
 def get_travel_time(origin_id, dest_id, travel_times_df):
     """Get travel time between two stations using their UUIDs"""
-    debug_output = []
-    
-    def add_debug(msg):
-        debug_output.append(msg)
-        print(msg)
-    
     try:
-        # Debug: Log input parameters
-        add_debug(f"\n=== get_travel_time called ===")
-        add_debug(f"Origin ID: {origin_id} (type: {type(origin_id)})")
-        add_debug(f"Dest ID:   {dest_id} (type: {type(dest_id)})")
+        # Debug: Print input parameters
+        print(f"\n=== get_travel_time called ===")
+        print(f"Origin ID: {origin_id} (type: {type(origin_id)})")
+        print(f"Dest ID:   {dest_id} (type: {type(dest_id)})")
         
         if travel_times_df is None or travel_times_df.empty:
-            msg = "Error: travel_times_df is None or empty"
-            add_debug(msg)
-            return {'travel_time': float('inf'), 'debug': debug_output}
+            print("Error: travel_times_df is None or empty")
+            return float('inf')
         
         if pd.isna(origin_id) or pd.isna(dest_id):
-            msg = f"Error: Missing station IDs - origin: {origin_id}, dest: {dest_id}"
-            add_debug(msg)
-            return {'travel_time': float('inf'), 'debug': debug_output}
+            print(f"Error: Missing station IDs - origin: {origin_id}, dest: {dest_id}")
+            return float('inf')
             
         # Check if columns exist in the DataFrame
         required_columns = ['origin_uuid', 'destination_uuid', 'travel_min']
         if not all(col in travel_times_df.columns for col in required_columns):
-            msg = f"Error: Missing required columns in travel_times_df. Available columns: {travel_times_df.columns.tolist()}"
-            add_debug(msg)
-            return {'travel_time': float('inf'), 'debug': debug_output}
+            print(f"Error: Missing required columns in travel_times_df. Available columns: {travel_times_df.columns.tolist()}")
+            return float('inf')
         
         # Check direct direction (origin -> destination)
         direct = travel_times_df[
@@ -155,10 +145,9 @@ def get_travel_time(origin_id, dest_id, travel_times_df):
         ]
         
         if not direct.empty:
-            travel_time = direct['travel_min'].iloc[0]
-            add_debug(f"Found direct route: {len(direct)} matches")
-            add_debug(f"Travel time: {travel_time} min")
-            return {'travel_time': travel_time, 'debug': debug_output}
+            print(f"Found direct route: {len(direct)} matches")
+            print(f"Sample travel time: {direct['travel_min'].iloc[0]} min")
+            return direct['travel_min'].iloc[0]
         
         print("No direct route found, checking reverse direction...")
         
@@ -169,12 +158,11 @@ def get_travel_time(origin_id, dest_id, travel_times_df):
         ]
         
         if not reverse.empty:
-            travel_time = reverse['travel_min'].iloc[0]
-            add_debug(f"Found reverse route: {len(reverse)} matches")
-            add_debug(f"Travel time: {travel_time} min")
-            return {'travel_time': travel_time, 'debug': debug_output}
+            print(f"Found reverse route: {len(reverse)} matches")
+            print(f"Sample travel time: {reverse['travel_min'].iloc[0]} min")
+            return reverse['travel_min'].iloc[0]
             
-        add_debug("No route found in either direction")
+        print("No route found in either direction")
         
         # Debug: Check if either station exists in the travel times data
         origin_exists = (travel_times_df['origin_uuid'] == origin_id).any() or \
@@ -182,19 +170,18 @@ def get_travel_time(origin_id, dest_id, travel_times_df):
         dest_exists = (travel_times_df['origin_uuid'] == dest_id).any() or \
                      (travel_times_df['destination_uuid'] == dest_id).any()
         
-        add_debug(f"Origin station in data: {'Yes' if origin_exists else 'No'}")
-        add_debug(f"Destination station in data: {'Yes' if dest_exists else 'No'}")
+        print(f"Origin station in data: {'Yes' if origin_exists else 'No'}")
+        print(f"Destination station in data: {'Yes' if dest_exists else 'No'}")
         
-        return {'travel_time': float('inf'), 'debug': debug_output}  # No route found
+        return float('inf')  # No route found
         
     except Exception as e:
-        error_msg = f"Error in get_travel_time: {str(e)}"
-        add_debug(error_msg)
-        add_debug(f"Origin ID: {origin_id}, Dest ID: {dest_id}")
+        print(f"Error in get_travel_time: {str(e)}")
+        print(f"Origin ID: {origin_id}, Dest ID: {dest_id}")
         if 'travel_times_df' in locals():
-            add_debug(f"DataFrame columns: {travel_times_df.columns.tolist()}")
-            add_debug(f"DataFrame sample: {travel_times_df.head(1).to_dict()}")
-        return {'travel_time': float('inf'), 'debug': debug_output, 'error': str(e)}
+            print(f"DataFrame columns: {travel_times_df.columns.tolist()}")
+            print(f"DataFrame sample: {travel_times_df.head(1).to_dict()}")
+        return float('inf')
 
 def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
     # Create a base map centered on Tokyo with settings to prevent clustering
@@ -240,37 +227,18 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
             print(debug_info)
             
             try:
-                # Get travel time with debug info
-                result = get_travel_time(
+                travel_time = get_travel_time(
                     teacher_station,
                     school_station,
                     travel_times_df
                 )
-                
-                # Extract travel time and debug info
-                travel_time = result['travel_time']
-                debug_info = result.get('debug', [])
-                
-                # Display debug info in an expander
-                with st.expander(f"Debug: {teacher['name']} → {selected_school['name']}"):
-                    st.code("\n".join(debug_info))
-                
-                st.info(f"Travel time: {travel_time} minutes")
+                print(f"Calculated travel time: {travel_time} minutes")
                 is_within_range = travel_time <= 60
-                
-                if is_within_range:
-                    st.success(f"✅ Within 60 minutes ({travel_time:.0f} min)")
-                else:
-                    st.warning(f"❌ Not within 60 minutes ({travel_time:.0f} min)")
-                
-                # Store the travel time for later use
-                teacher['_travel_time'] = travel_time
-                    
+                print(f"Is within 60 minutes: {is_within_range}")
             except Exception as e:
                 error_msg = f"Error calculating travel time: {e}"
-                st.error(error_msg)
-                with st.expander("Debug Details"):
-                    st.error(traceback.format_exc())
+                print(error_msg)
+                st.warning(error_msg)
                 is_within_range = False
         
         # Determine icon color based on status and range
@@ -417,35 +385,32 @@ if selected_school_id:
     selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0]
     st.subheader(f"Teachers within 60 minutes of {selected_school['name']}")
     
-    # Find teachers within 60 minutes of the selected school
+    # Filter teachers within 60 minutes
     teachers_within_range = []
-    selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0]
-    
     for _, teacher in teachers_df.iterrows():
-        if 'station_uuid' in teacher and 'station_uuid' in selected_school:
-            result = get_travel_time(
-                teacher['station_uuid'],
-                selected_school['station_uuid'],
-                travel_times_df
-            )
-            travel_time = result['travel_time']
+        if 'station_id' not in teacher or pd.isna(teacher['station_id']) or teacher['station_id'] == '':
+            continue
             
-            if travel_time <= 60:  # 60 minutes threshold
-                teacher_copy = teacher.copy()
-                teacher_copy['travel_time'] = f"{int(travel_time)} min"
-                teacher_copy['_travel_time'] = travel_time  # Store numeric value for sorting
-                teachers_within_range.append(teacher_copy)
+        travel_time = get_travel_time(
+            teacher['station_id'],
+            selected_school['station_uuid'],
+            travel_times_df
+        )
+        
+        if travel_time <= 60:  # 60 minutes threshold
+            teacher_copy = teacher.copy()
+            teacher_copy['travel_time'] = f"{int(travel_time)} min"
+            teachers_within_range.append(teacher_copy)
     
     if teachers_within_range:
         # Create a DataFrame with all teachers and their travel times
         result_df = pd.DataFrame(teachers_within_range)
         
-        # Sort by travel time using the numeric _travel_time field
-        result_df = result_df.sort_values('_travel_time')
+        # Convert travel_time to numeric for sorting
+        result_df['travel_minutes'] = result_df['travel_time'].str.extract('(\d+)').astype(float)
         
-        # Clean up - remove the temporary travel_minutes column if it exists
-        if 'travel_minutes' in result_df.columns:
-            result_df = result_df.drop(columns=['travel_minutes'])
+        # Sort by travel time
+        result_df = result_df.sort_values('travel_minutes')
         
         # Add gender icons
         result_df['Gender'] = result_df['gender'].apply(lambda x: '♂️' if x == 'Male' else '♀️')
