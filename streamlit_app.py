@@ -104,18 +104,20 @@ def load_schools_with_locations():
     df = pd.read_csv(SCHOOLS_FILE)
     return df
 
-# Add station coordinates for teachers (in a real app, you'd want to add these to your data)
+# Add station coordinates for teachers using tokyo_stations_gps.csv
 @st.cache_data
-def add_teacher_locations(teachers_df, schools_df):
-    # Create a mapping of station names to coordinates from schools data
-    station_coords = {}
-    for _, school in schools_df.iterrows():
-        if pd.notna(school['station']) and pd.notna(school['latitude']) and pd.notna(school['longitude']):
-            station_coords[school['station']] = (school['latitude'], school['longitude'])
+def add_teacher_locations(teachers_df, _):
+    # Load station coordinates from tokyo_stations_gps.csv
+    stations_gps = pd.read_csv(DATA_DIR / 'tokyo_stations_gps.csv')
     
-    # Add coordinates to teachers
-    teachers_df['station_lat'] = teachers_df['station'].map(lambda x: station_coords.get(x, {}).get(0, None))
-    teachers_df['station_lon'] = teachers_df['station'].map(lambda x: station_coords.get(x, {}).get(1, None))
+    # Create a mapping of station_id to coordinates
+    station_coords = {}
+    for _, row in stations_gps.iterrows():
+        station_coords[row['id']] = (row['latitude'], row['longitude'])
+    
+    # Add coordinates to teachers using station_id
+    teachers_df['station_lat'] = teachers_df['station_id'].map(lambda x: station_coords.get(x, (None, None))[0])
+    teachers_df['station_lon'] = teachers_df['station_id'].map(lambda x: station_coords.get(x, (None, None))[1])
     
     return teachers_df
 
