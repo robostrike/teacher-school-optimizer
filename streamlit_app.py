@@ -421,36 +421,41 @@ if selected_school_id:
         display_df = result_df[display_cols].copy()
         display_df.columns = new_columns
         
-        # Display styled DataFrame
-        def color_row(row):
-            # Use the final column name 'Type' since we've already renamed the columns
-            color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
-            return ['background-color: ' + color] * len(row)
-        
         # Debug: Print DataFrame info and sample data
-        st.write("Debug - DataFrame columns:", display_df.columns.tolist())
-        st.write("Debug - Sample row:", display_df.iloc[0].to_dict() if not display_df.empty else "Empty DataFrame")
-        
-        # Apply styling with the final column names
-        styled_df = display_df.style.apply(color_row, axis=1)
-        
-        # Debug: Print the first row's style
         if not display_df.empty:
-            sample_style = color_row(display_df.iloc[0])
-            st.write("Debug - First row style:", sample_style)
-        
-        # Display the table without the index
-        st.dataframe(
-            styled_df,
-            column_config={
-                "Name": "Teacher Name",
-                "Type": "Teacher Type",
-                "Station": "Nearest Station",
-                "Travel Time": "Travel Time"
-            },
-            use_container_width=True,
-            hide_index=True
-        )
+            st.write("Debug - First row 'Type' value:", display_df.iloc[0]['Type'])
+            
+            # Convert DataFrame to HTML with custom styling
+            def get_row_style(row):
+                color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'
+                return f'style="background-color: {color};"'
+                
+            # Create HTML table
+            html = "<div style='overflow-x:auto;'><table style='width:100%; border-collapse: collapse;'>"
+            
+            # Add header
+            html += "<tr>"
+            for col in display_df.columns:
+                html += f"<th style='text-align: left; padding: 8px; border: 1px solid #ddd;'>{col}</th>"
+            html += "</tr>"
+            
+            # Add rows
+            for _, row in display_df.iterrows():
+                row_style = get_row_style(row)
+                html += f"<tr {row_style}>"
+                for col in display_df.columns:
+                    html += f"<td style='padding: 8px; border: 1px solid #ddd;'>{row[col]}</td>"
+                html += "</tr>"
+                
+            html += "</table></div>"
+            
+            # Display the HTML table
+            st.markdown(html, unsafe_allow_html=True)
+            
+            # Also show the count of teachers
+            st.info(f"Found {len(display_df)} teachers within 60 minutes of {selected_school['name']}.")
+        else:
+            st.info("No teachers found within 60 minutes of the selected school.")
         
         # Add a simple message about the teachers list
         st.info(f"Found {len(display_df)} teachers within 60 minutes of {selected_school['name']}.")
