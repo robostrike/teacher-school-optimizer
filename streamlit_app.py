@@ -236,12 +236,29 @@ if selected_school_id:
             teachers_within_range.append(teacher_copy)
     
     if teachers_within_range:
-        # Display as a nice table
+        # Create a DataFrame with all teachers and their travel times
         result_df = pd.DataFrame(teachers_within_range)
-        result_df = result_df[['name', 'type', 'station', 'travel_time']]
-        result_df.columns = ['Name', 'Type', 'Station', 'Travel Time']
+        
+        # Convert travel_time to numeric for sorting
+        result_df['travel_minutes'] = result_df['travel_time'].str.extract('(\d+)').astype(float)
+        
+        # Sort by travel time
+        result_df = result_df.sort_values('travel_minutes')
+        
+        # Add gender icons
+        result_df['Gender'] = result_df['gender'].apply(lambda x: '♂️' if x == 'Male' else '♀️')
+        
+        # Prepare display columns
+        display_df = result_df[['name', 'Gender', 'type', 'station', 'travel_time']]
+        display_df.columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
+        
+        # Display styled DataFrame
+        def color_row(row):
+            color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
+            return ['background-color: ' + color] * len(row)
+        
         st.dataframe(
-            result_df,
+            display_df.style.apply(color_row, axis=1),
             column_config={
                 "Name": "Teacher Name",
                 "Type": "Teacher Type",
