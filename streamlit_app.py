@@ -18,8 +18,10 @@ SCHOOLS_FILE = DATA_DIR / "kidsduo_schools.csv"
 def load_teachers():
     """Load teacher data from CSV"""
     df = pd.read_csv(TEACHERS_FILE)
-    df['move'] = df['move'].fillna('false').str.lower() == 'true'
-    return df.fillna('')  # Replace NaN with empty string for display
+    # Convert 'move' column to string, handle NaN, then to boolean
+    df['move'] = df['move'].astype(str).str.lower() == 'true'
+    # Fill other columns with empty string for display
+    return df.fillna('')
 
 @st.cache_data
 def load_schools():
