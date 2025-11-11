@@ -55,11 +55,18 @@ st.title("Teacher-School Manager")
 
 # Create a map to display teachers and schools
 def create_map(teachers_df, schools_df):
-    # Create a base map centered on Tokyo
-    m = folium.Map(location=[35.6895, 139.6917], zoom_start=11)
-    
-    # Add marker cluster for teachers
-    teacher_cluster = MarkerCluster(name="Teachers").add_to(m)
+    # Create a base map centered on Tokyo with settings to prevent clustering
+    m = folium.Map(
+        location=[35.6895, 139.6917],
+        zoom_start=11,
+        min_zoom=10,  # Prevent zooming out too far where points would overlap too much
+        max_zoom=18,  # Maximum zoom level
+        min_lat=35.3,  # Approximate bounds for Tokyo area
+        max_lat=35.9,
+        min_lon=139.4,
+        max_lon=140.0,
+        max_bounds=True  # Prevent panning outside these bounds
+    )
     
     # Add markers for each teacher
     for _, teacher in teachers_df.iterrows():
@@ -69,29 +76,37 @@ def create_map(teachers_df, schools_df):
             
         # Determine icon color based on status
         if pd.isna(teacher.get('school_id')) or teacher.get('school_id') == '':
-            icon_color = 'blue'  # Available for assignment
+            color = 'blue'  # Available for assignment
         elif teacher.get('move', False):
-            icon_color = 'orange'  # Willing to move
+            color = 'orange'  # Willing to move
         else:
-            icon_color = 'green'  # Stable assignment
-            
-        folium.Marker(
+            color = 'green'  # Stable assignment
+        
+        # Create a circle marker instead of the default marker
+        folium.CircleMarker(
             location=[teacher['station_lat'], teacher['station_lon']],
+            radius=2,  # Size of the dot
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.7,
             popup=f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}",
-            icon=folium.Icon(color=icon_color, icon='user', prefix='fa'),
             tooltip=f"Teacher: {teacher['name']}"
-        ).add_to(teacher_cluster)
+        ).add_to(m)
     
-    # Add markers for schools
-    school_cluster = MarkerCluster(name="Schools").add_to(m)
+    # Add markers for schools as individual dots
     for _, school in schools_df.iterrows():
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
-            folium.Marker(
+            folium.CircleMarker(
                 location=[school['latitude'], school['longitude']],
-                popup=f"{school['name']}\n{school['station']}",
-                icon=folium.Icon(color='red', icon='school', prefix='fa'),
+                radius=5,  # Size of the dot
+                color='red',
+                fill=True,
+                fill_color='red',
+                fill_opacity=0.7,
+                popup=f"School: {school['name']}\n{school['station']}",
                 tooltip=f"School: {school['name']}"
-            ).add_to(school_cluster)
+            ).add_to(m)
     
     # Add layer control
     folium.LayerControl().add_to(m)
