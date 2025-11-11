@@ -65,7 +65,6 @@ def create_map(teachers_df, schools_df):
         max_lat=35.9,
         min_lon=139.4,
         max_lon=140.0,
-        max_bounds=True  # Prevent panning outside these bounds
     )
     
     # Add markers for each teacher
