@@ -98,7 +98,6 @@ def create_map(teachers_df, schools_df):
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
             folium.CircleMarker(
                 location=[school['latitude'], school['longitude']],
-                radius=5,  # Size of the dot
                 color='red',
                 fill=True,
                 fill_color='red',
