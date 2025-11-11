@@ -427,8 +427,17 @@ if selected_school_id:
             color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
             return ['background-color: ' + color] * len(row)
         
+        # Debug: Print DataFrame info and sample data
+        st.write("Debug - DataFrame columns:", display_df.columns.tolist())
+        st.write("Debug - Sample row:", display_df.iloc[0].to_dict() if not display_df.empty else "Empty DataFrame")
+        
         # Apply styling with the final column names
         styled_df = display_df.style.apply(color_row, axis=1)
+        
+        # Debug: Print the first row's style
+        if not display_df.empty:
+            sample_style = color_row(display_df.iloc[0])
+            st.write("Debug - First row style:", sample_style)
         
         # Display the table without the index
         st.dataframe(
