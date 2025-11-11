@@ -422,12 +422,19 @@ if selected_school_id:
         
         # Display styled DataFrame
         def color_row(row):
-            color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
+            # Use 'type' instead of 'Type' since we're applying this before column renaming
+            color = '#e6f3ff' if row['type'] == 'Native' else '#f3e6ff'  # Light blue for Native, light purple for Bilingual
             return ['background-color: ' + color] * len(row)
+        
+        # Apply styling before renaming columns
+        styled_df = display_df.style.apply(color_row, axis=1)
+        
+        # Rename columns after applying styles
+        display_df.columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
         
         # Display the table without the index
         st.dataframe(
-            display_df.style.apply(color_row, axis=1),
+            styled_df,
             column_config={
                 "Name": "Teacher Name",
                 "Type": "Teacher Type",
