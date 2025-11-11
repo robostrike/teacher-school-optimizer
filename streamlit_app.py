@@ -116,28 +116,44 @@ def load_travel_times():
         st.error(f"Error loading travel times: {e}")
         return pd.DataFrame()
 
-def get_travel_time(origin_id, destination_id, travel_times_df):
-    """Get travel time between two stations in minutes."""
-    if pd.isna(origin_id) or pd.isna(destination_id) or origin_id == '' or destination_id == '':
+def get_travel_time(origin_id, dest_id, travel_times_df):
+    """Get travel time between two stations using their IDs"""
+    if travel_times_df is None or travel_times_df.empty:
         return float('inf')
-        
-    # Check direct route
+    
+    # Check both directions since the data might not be symmetric
     direct = travel_times_df[
         (travel_times_df['origin_uuid'] == origin_id) & 
-        (travel_times_df['destination_uuid'] == destination_id)
+        (travel_times_df['destination_uuid'] == dest_id)
     ]
     
     if not direct.empty:
         return direct['travel_min'].iloc[0]
     
-    # Check reverse route
+    # Check reverse direction
     reverse = travel_times_df[
-        (travel_times_df['origin_uuid'] == destination_id) & 
+        (travel_times_df['origin_uuid'] == dest_id) & 
         (travel_times_df['destination_uuid'] == origin_id)
     ]
     
     if not reverse.empty:
         return reverse['travel_min'].iloc[0]
+    
+    # If no direct route found, try to find a path through intermediate stations
+    # This is a simplified approach - for a production app, you'd want to implement
+    # a proper pathfinding algorithm
+    if len(travel_times_df) > 0:
+        # Get all possible paths through one intermediate station
+        first_leg = travel_times_df[travel_times_df['origin_uuid'] == origin_id]
+        if not first_leg.empty:
+            for _, leg1 in first_leg.iterrows():
+                second_leg = travel_times_df[
+                    (travel_times_df['origin_uuid'] == leg1['destination_uuid']) &
+                    (travel_times_df['destination_uuid'] == dest_id)
+                ]
+                if not second_leg.empty:
+                    # Return the sum of both legs
+                    return leg1['travel_min'] + second_leg['travel_min'].iloc[0]
     
     return float('inf')  # No route found
 
@@ -170,13 +186,17 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         # Determine if teacher is within 60 minutes of selected school
         is_within_range = False
         travel_time = float('inf')
-        if selected_school is not None and 'station_id' in teacher and 'station_id' in selected_school:
-            travel_time = get_travel_time(
-                teacher['station_id'], 
-                selected_school['station_id'],
-                travel_times_df
-            )
-            is_within_range = travel_time <= 60
+        if selected_school is not None and 'station_uuid' in teacher and 'station_uuid' in selected_school:
+            try:
+                travel_time = get_travel_time(
+                    teacher['station_uuid'], 
+                    selected_school['station_uuid'],
+                    travel_times_df
+                )
+                is_within_range = travel_time <= 60
+            except Exception as e:
+                st.warning(f"Error calculating travel time: {e}")
+                is_within_range = False
         
         # Determine icon color based on status and range
         if not teacher.get('move', False) and pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
