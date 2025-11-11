@@ -415,13 +415,10 @@ if selected_school_id:
         # Add gender icons
         result_df['Gender'] = result_df['gender'].apply(lambda x: '♂️' if x == 'Male' else '♀️')
         
-        # Add a checkbox column for selection
-        result_df['Select'] = [st.checkbox('', key=f'select_{i}') for i in result_df.index]
-        
-        # Prepare display columns
-        display_cols = ['Select', 'name', 'Gender', 'type', 'station', 'travel_time']
+        # Prepare display columns without the checkbox
+        display_cols = ['name', 'Gender', 'type', 'station', 'travel_time']
         display_df = result_df[display_cols]
-        display_df.columns = ['Select', 'Name', ' ', 'Type', 'Station', 'Travel Time']
+        display_df.columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
         
         # Display styled DataFrame
         def color_row(row):
@@ -432,7 +429,6 @@ if selected_school_id:
         st.dataframe(
             display_df.style.apply(color_row, axis=1),
             column_config={
-                "Select": st.column_config.CheckboxColumn("Select", width=10),
                 "Name": "Teacher Name",
                 "Type": "Teacher Type",
                 "Station": "Nearest Station",
@@ -442,33 +438,8 @@ if selected_school_id:
             hide_index=True
         )
         
-        # Add assign button if any teachers are selected
-        if st.button('Assign Selected Teachers to This School', type='primary'):
-            selected_teachers = result_df[result_df['Select']]['id'].tolist()
-            if selected_teachers:
-                assignments_updated = False
-                for teacher_id in selected_teachers:
-                    # Only update if not already assigned to this school
-                    current_assignment = current_assignments[
-                        (current_assignments['teacher_id'] == teacher_id) & 
-                        (current_assignments['is_current'] == True)
-                    ]
-                    if current_assignment.empty or current_assignment['school_id'].iloc[0] != selected_school_id:
-                        assignments_df = assign_teacher_to_school(
-                            teacher_id, 
-                            selected_school_id,
-                            assignments_df
-                        )
-                        assignments_updated = True
-                
-                if assignments_updated:
-                    save_assignments(assignments_df)
-                    st.success(f"Successfully assigned {len(selected_teachers)} teachers to {selected_school['name']}!")
-                    st.rerun()
-                else:
-                    st.warning("Selected teachers are already assigned to this school.")
-            else:
-                st.warning("Please select at least one teacher to assign.")
+        # Add a simple message about the teachers list
+        st.info(f"Found {len(display_df)} teachers within 60 minutes of {selected_school['name']}.")
     else:
         st.info("No teachers found within 60 minutes of the selected school.")
 
