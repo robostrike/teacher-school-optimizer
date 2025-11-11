@@ -226,7 +226,7 @@ if selected_school_id:
             
         travel_time = get_travel_time(
             teacher['station_id'],
-            selected_school['station_id'],
+            selected_school['station_uuid'],
             travel_times_df
         )
         
