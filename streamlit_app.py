@@ -84,7 +84,7 @@ def create_map(teachers_df, schools_df):
         # Create a circle marker instead of the default marker
         folium.CircleMarker(
             location=[teacher['station_lat'], teacher['station_lon']],
-            radius=2,  # Size of the dot
+            radius=5,  # Size of the dot
             color=color,
             fill=True,
             fill_color=color,
@@ -111,6 +111,7 @@ def create_map(teachers_df, schools_df):
     folium.LayerControl().add_to(m)
     
     return m
+
 
 # Load school data with locations
 @st.cache_data
