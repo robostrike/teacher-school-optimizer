@@ -262,6 +262,9 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
                     st.success(f"✅ Within 60 minutes ({travel_time:.0f} min)")
                 else:
                     st.warning(f"❌ Not within 60 minutes ({travel_time:.0f} min)")
+                
+                # Store the travel time for later use
+                teacher['_travel_time'] = travel_time
                     
             except Exception as e:
                 error_msg = f"Error calculating travel time: {e}"
@@ -414,32 +417,35 @@ if selected_school_id:
     selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0]
     st.subheader(f"Teachers within 60 minutes of {selected_school['name']}")
     
-    # Filter teachers within 60 minutes
+    # Find teachers within 60 minutes of the selected school
     teachers_within_range = []
+    selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0]
+    
     for _, teacher in teachers_df.iterrows():
-        if 'station_id' not in teacher or pd.isna(teacher['station_id']) or teacher['station_id'] == '':
-            continue
+        if 'station_uuid' in teacher and 'station_uuid' in selected_school:
+            result = get_travel_time(
+                teacher['station_uuid'],
+                selected_school['station_uuid'],
+                travel_times_df
+            )
+            travel_time = result['travel_time']
             
-        travel_time = get_travel_time(
-            teacher['station_id'],
-            selected_school['station_uuid'],
-            travel_times_df
-        )
-        
-        if travel_time <= 60:  # 60 minutes threshold
-            teacher_copy = teacher.copy()
-            teacher_copy['travel_time'] = f"{int(travel_time)} min"
-            teachers_within_range.append(teacher_copy)
+            if travel_time <= 60:  # 60 minutes threshold
+                teacher_copy = teacher.copy()
+                teacher_copy['travel_time'] = f"{int(travel_time)} min"
+                teacher_copy['_travel_time'] = travel_time  # Store numeric value for sorting
+                teachers_within_range.append(teacher_copy)
     
     if teachers_within_range:
         # Create a DataFrame with all teachers and their travel times
         result_df = pd.DataFrame(teachers_within_range)
         
-        # Convert travel_time to numeric for sorting
-        result_df['travel_minutes'] = result_df['travel_time'].str.extract('(\d+)').astype(float)
+        # Sort by travel time using the numeric _travel_time field
+        result_df = result_df.sort_values('_travel_time')
         
-        # Sort by travel time
-        result_df = result_df.sort_values('travel_minutes')
+        # Clean up - remove the temporary travel_minutes column if it exists
+        if 'travel_minutes' in result_df.columns:
+            result_df = result_df.drop(columns=['travel_minutes'])
         
         # Add gender icons
         result_df['Gender'] = result_df['gender'].apply(lambda x: '♂️' if x == 'Male' else '♀️')
