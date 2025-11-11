@@ -154,8 +154,13 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         max_lon=140.0,
     )
     
-    # Get selected school data if any
-    selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0] if selected_school_id else None
+    # Filter schools if a specific school is selected
+    if selected_school_id:
+        schools_to_show = schools_df[schools_df['id'] == selected_school_id]
+        selected_school = schools_to_show.iloc[0] if not schools_to_show.empty else None
+    else:
+        schools_to_show = schools_df
+        selected_school = None
     
     # Add markers for each teacher
     for _, teacher in teachers_df.iterrows():
@@ -201,9 +206,9 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         ).add_to(m)
     
     # Add markers for schools
-    for _, school in schools_df.iterrows():
+    for _, school in schools_to_show.iterrows():
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
-            is_selected = school['id'] == selected_school_id
+            is_selected = school['id'] == selected_school_id if selected_school_id else False
             # Create a pin marker for the school
             folium.Marker(
                 location=[school['latitude'], school['longitude']],
