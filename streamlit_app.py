@@ -14,8 +14,18 @@ SCHOOLS_FILE = DATA_DIR / "kidsduo_schools.csv"
 def load_teachers():
     """Load teacher data from CSV"""
     df = pd.read_csv(TEACHERS_FILE)
-    # Ensure 'move' column is boolean, defaulting to False if empty
-    df['move'] = df['move'].fillna('false').str.lower() == 'true'
+    # Handle 'move' column with proper type conversion
+    if 'move' in df.columns:
+        # Convert to string first, then handle true/false values
+        df['move'] = df['move'].astype(str).str.lower().replace({
+            'true': True,
+            'false': False,
+            'nan': False,
+            '': False
+        }).astype(bool)
+    else:
+        # If 'move' column doesn't exist, create it with False as default
+        df['move'] = False
     return df
 
 @st.cache_data
