@@ -267,11 +267,51 @@ travel_times_df = load_travel_times()
 
 # School selection for filtering
 st.sidebar.subheader("Filter by School")
+
+# Get current assignments
+current_assignments = get_current_assignments(load_assignments())
+
+# Count teachers per school
+school_teacher_counts = current_assignments['school_id'].value_counts().to_dict()
+
+# Format school names with teacher counts
+def format_school_option(school_id):
+    if not school_id:
+        return "All Schools"
+    school_name = schools_df[schools_df['id'] == school_id]['name'].iloc[0]
+    teacher_count = school_teacher_counts.get(school_id, 0)
+    return f"{school_name} ({teacher_count} teachers)"
+
+# Create school options with teacher counts
+school_options = [""] + sorted(schools_df['id'].tolist())
 selected_school_id = st.sidebar.selectbox(
     "Select a school to see teachers within 60 minutes",
-    [""] + sorted(schools_df['id'].tolist()),
-    format_func=lambda x: schools_df[schools_df['id'] == x]['name'].iloc[0] if x else "All Schools"
+    school_options,
+    format_func=format_school_option
 )
+
+# Show assigned teachers for the selected school
+if selected_school_id:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Assigned Teachers")
+    assigned_teachers = current_assignments[current_assignments['school_id'] == selected_school_id]
+    
+    if not assigned_teachers.empty:
+        # Get teacher details for the assigned teachers
+        school_teachers = teachers_df[teachers_df['id'].isin(assigned_teachers['teacher_id'])]
+        
+        # Display each teacher with their type and station
+        for _, teacher in school_teachers.iterrows():
+            gender_icon = '♂️' if teacher.get('gender') == 'Male' else '♀️'
+            teacher_type = teacher.get('type', 'Unknown')
+            station = teacher.get('station', 'Unknown')
+            
+            st.sidebar.markdown(
+                f"- {gender_icon} **{teacher['name']}**  \n"
+                f"  *{teacher_type}* at {station}"
+            )
+    else:
+        st.sidebar.info("No teachers currently assigned to this school")
 
 # Display the map
 map_fig = create_map(teachers_df, schools_df, selected_school_id if selected_school_id else None, travel_times_df)
