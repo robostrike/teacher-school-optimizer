@@ -169,6 +169,7 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
             
         # Determine if teacher is within 60 minutes of selected school
         is_within_range = False
+        travel_time = float('inf')
         if selected_school is not None and 'station_id' in teacher and 'station_id' in selected_school:
             travel_time = get_travel_time(
                 teacher['station_id'], 
@@ -178,19 +179,28 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
             is_within_range = travel_time <= 60
         
         # Determine icon color based on status and range
-        if is_within_range:
-            color = 'purple'  # Within 60 minutes of selected school
-        elif pd.isna(teacher.get('school_id')) or teacher.get('school_id') == '':
-            color = 'blue'  # Available for assignment
-        elif teacher.get('move', False):
-            color = 'orange'  # Willing to move
+        if not teacher.get('move', False) and pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
+            color = 'gray'  # Cannot move (has school and not willing to move)
+        elif is_within_range:
+            color = 'green'  # Within 60 minutes of selected school
         else:
-            color = 'green'  # Stable assignment
+            color = 'blue'  # Default color (available for assignment or willing to move)
         
-        # Add popup with travel time if applicable
+        # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
-        if is_within_range and 'station' in selected_school:
-            popup_text += f"\n{travel_time:.0f} min from {selected_school['name']}"
+        if selected_school is not None and 'station' in selected_school:
+            if is_within_range:
+                popup_text += f"\n✅ {travel_time:.0f} min from {selected_school['name']}"
+            else:
+                popup_text += f"\n❌ {travel_time:.0f} min from {selected_school['name']} (too far)"
+        
+        # Add school assignment info if any
+        if pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
+            school_name = schools_df[schools_df['id'] == teacher['school_id']]['name'].iloc[0] \
+                if not schools_df[schools_df['id'] == teacher['school_id']].empty else 'Unknown School'
+            popup_text += f"\n🏫 Assigned to: {school_name}"
+            if not teacher.get('move', False):
+                popup_text += " (Not willing to move)"
         
         # Create a circle marker
         folium.CircleMarker(
