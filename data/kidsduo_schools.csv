@@ -1,12 +1,13 @@
-﻿id,name,station,station_eng,station_uuid,latitude,longitude,address,size
-KD1928,スクエア東京,茅場町駅,Kayabachō,16aff7c1-418e-4922-8d7b-aa0a9c60e830,35.6799355,139.7801631,"Kayabachō Sta., 1-chōme-11 Nihonbashikayabachō, Chuo City, Tokyo 103-0025, Japan",25
-KD2902,HARUMI FLAG（晴海フラッグ）,晴海ふ頭公園,Harumi Futou Park,469ebcdc-26aa-44da-ab6e-be58326e4b99,35.65037,139.7744967,"5 Chome-5 Harumi, Chuo City, Tokyo 104-0053, Japan",20
-KD1881,芝浦,三田駅,Mita,aa08b2ba-5bd9-4a3d-902f-385c6d158aff,35.6432237,139.7497409,"Shibaura, Minato City, Tokyo, Japan",15
-KD2289,Class S 麻布,麻布十番駅,Azabu-juban,b83a3e3d-1764-477f-b5fc-9bc23a833539,35.6546541,139.7351855,"Azabujuban, Minato City, Tokyo 106-0045, Japan",8
-KD1752,四谷,四谷三丁目駅,Yotsuya-sanchōme,274bd8ac-0f83-4a2f-9b13-af0a860b0843,35.6879318,139.7206307,"Yotsuya-Sanchome Station, 3-chōme Yotsuya, Shinjuku City, Tokyo 160-0004, Japan",19
-KD2487,早稲田,早稲田駅,Waseda,69b501cf-9de0-459e-8c51-cc1a2ae220ee,35.705714,139.722139,"Waseda, Inuyama, Aichi 484-0052, Japan",28
-KD2493,目白,下落合駅,Shimo-Ochiai,969988a0-fc97-4722-96c3-c2fb8adb77be,35.7225287,139.7036263,"3-chōme-17-30 Shimoochiai, Shinjuku City, Tokyo 161-0033, Japan",12
-KD1236,駒込,千石駅,Sengoku,10ccd4c8-975b-4082-880a-abe03ae1c88e,35.7389956,139.7409333,"Komagome, Toshima City, Tokyo 170-0003, Japan",10
-KD2875,茗荷谷,新大塚駅,Shin-ōtsuka,7e0a49af-b68f-4240-bc5b-2aafb521bee0,35.725778,139.729917,"Myogadani, Konan Ward, Niigata, 950-0114, Japan",5
-KD3016,根津,根津駅,Nezu,d9ed1d33-7357-4545-ab05-6b2c2c174997,35.7192296,139.764569,"Nezu, Bunkyo City, Tokyo 113-0031, Japan",2
-KD3020,白山,白山駅,Hakusan,8ecd21e7-f5b8-4486-98e0-d6d1b36c3650,35.72133,139.752078,"Hakusan, Ishikawa, Japan",10
+id,name,station,station_eng,station_uuid,latitude,longitude,address,num_students
+KD1928,スクエア東京,茅場町駅,Kayabachō,16aff7c1-418e-4922-8d7b-aa0a9c60e830,35.6799355,139.7801631,"Kayabachō Sta., 1-chōme-11 Nihonbashikayabachō, Chuo City, Tokyo 103-0025, Japan",16
+KD2866,とうきょうスカイツリー駅前,押上駅,Oshiage,a69dd352-8592-42a2-a59e-412ceceb7253,35.710332,139.8132971,"Oshiage Sta.(SKYTREE), 1-chōme-1-65 Oshiage, Sumida City, Tokyo 131-0045, Japan",18
+KD2760,大井町,大井町駅,Ōimachi,edb27858-83b7-473b-b564-97dc32af862d,35.6076153,139.7346592,"Ōimachi Station, Shinagawa City, Tokyo, Japan",27
+KD3082,西馬込,西馬込駅,Nishi-magome,c2ae7927-51cc-4088-a14f-f7cb7896669a,35.5868252,139.7059056,"Nishi-Magome Station, 2-chōme-1-6 Nishimagome, Ota City, Tokyo 143-0026, Japan",15
+KD2384,千歳烏山,八幡山駅,Hachiman-yama,da913f78-9dd7-42b3-94b0-3c5a4323ea14,35.6698304,139.6161352,"Hachiman-yama Station, １-１-8 上高井戸 杉並区 東京都 168-0074, Japan",5
+KD1316,東高円寺,東高円寺駅,Higashi-koenji,b8f0efac-ae92-4dd3-bc36-afb753bc5bc0,35.7053168,139.6496915,"Kōenji Station, 4-chōme-48-2 Kōenjiminami, Suginami City, Tokyo 166-0003, Japan",28
+KD3138,王子,王子駅,Oji,96c9d20f-7f31-4c4a-89de-519fd090d9da,35.7529945,139.7378714,"Ōji Station, Kita City, Tokyo, Japan",14
+KD1220,光が丘,光が丘駅,Hikarigaoka,d23d5f75-1bd8-4d13-a9c2-8e7acf75acd7,35.7585093,139.6289329,"Hikarigaoka Station, 3-chōme-10 Hikarigaoka, Nerima City, Tokyo 179-0072, Japan",7
+KD1324,大泉学園,大泉学園駅,Oizumi-gakuen,5ef34b29-91fb-489a-a3aa-dd410458bc7f,35.7493601,139.5865462,"Ōizumi-gakuen Station, Higashiōizumi, Nerima City, Tokyo 178-0063, Japan",8
+KD1192,西葛西,西葛西駅,Nishi-Kasai,9a029abe-f626-4db1-9e7f-edb435d42aa1,35.664577,139.8592032,"Nishi-Kasai Station, ６丁目-１４-1 西葛西 江戸川区 東京都 134-0088, Japan",30
+KD2964,立川北,立川駅,Tachikawa,c6fc6aed-2df5-448c-9964-87840b4a8b29,35.69950559999999,139.4124342,"Tachikawa-Kita Station, 2-chōme-4 Akebonochō, Tachikawa, Tokyo 190-0012, Japan",8
+KD1824,町田三塚,町田駅,Machida,8a04bdfe-3577-4ecd-a07a-3aa09b79c999,35.5439695,139.4450788,"Machida Station, 1-chōme-16 Morino, Machida, Tokyo 194-0013, Japan",7
