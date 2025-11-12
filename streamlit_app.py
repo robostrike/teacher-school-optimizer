@@ -232,9 +232,8 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
                     school_station,
                     travel_times_df
                 )
-                print(f"Calculated travel time: {travel_time} minutes")
+                print(f"Travel time: {travel_time}")
                 is_within_range = travel_time <= 60
-                print(f"Is within 60 minutes: {is_within_range}")
             except Exception as e:
                 error_msg = f"Error calculating travel time: {e}"
                 print(error_msg)
@@ -249,6 +248,8 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         else:
             color = 'blue'  # Default color (available for assignment or willing to move)
         
+        print(f"Color: {color}")
+
         # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
         if selected_school is not None and 'station' in selected_school:
