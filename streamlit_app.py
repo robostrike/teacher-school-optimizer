@@ -241,13 +241,16 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
                 st.warning(error_msg)
                 is_within_range = False
         
+        # Reset color for each teacher
+        color = 'blue'  # Default color
+        
         # Determine icon color based on status and range
         if not teacher.get('move', False) and pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
             color = 'gray'  # Cannot move (has school and not willing to move)
         elif is_within_range:
             color = 'green'  # Within 60 minutes of selected school
         
-        print(f"Color: {color}")
+        print(f"Color for {teacher['name']}: {color}")
 
         # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
