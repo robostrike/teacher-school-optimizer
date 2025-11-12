@@ -494,9 +494,19 @@ st.markdown("""
     /* Make the teacher cards more compact */
     .stContainer {
         padding: 0.25rem !important;
+        gap: 0 !important;
     }
     
     /* Remove all vertical gaps between elements */
+    .stVerticalBlock {
+        gap: 0.5rem !important;
+    }
+    
+    /* Specific class for teacher cards */
+    .st-emotion-cache-1ne20ew {
+        gap: 0 !important;
+    }
+    
     .stMarkdown h3, .stMarkdown p, .stMarkdown div {
         margin: 0 !important;
         padding: 0 !important;
@@ -530,12 +540,12 @@ st.markdown("""
     
     /* Space between cards */
     .stContainer > div {
-        margin: 0 0.1rem 0.2rem 0.1rem !important;
+        margin: 0 !important;
     }
     
     /* Make sure columns have the right spacing */
     .stHorizontal > div[data-testid="column"] {
-        padding: 0 0.1rem !important;
+        padding: 0 !important;
     }
     
     /* Reduce space around status messages */
