@@ -183,9 +183,17 @@ def get_travel_time(origin_id, dest_id, travel_times_df):
             print(f"DataFrame sample: {travel_times_df.head(1).to_dict()}")
         return float('inf')
 
-def calculate_teacher_colors(teachers_df, selected_school, travel_times_df):
-    """Pre-calculate colors for all teachers based on travel time to selected school"""
-    teacher_colors = {}
+def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
+    # Create a base map centered on Tokyo with settings to prevent clustering
+    m = folium.Map(
+        location=[35.6895, 139.6917],
+        zoom_start=11,
+        min_zoom=10,
+        max_zoom=18,
+        min_lat=35.3,
+        max_lat=35.9,
+        min_lon=139.4,
+        max_lon=140.0,
     
     for _, teacher in teachers_df.iterrows():
         if pd.isna(teacher.get('station_lat')) or pd.isna(teacher.get('station_lon')):
@@ -267,13 +275,11 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
 
         # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
-        if selected_school is not None and 'station' in selected_school and travel_time is not None:
+        if selected_school is not None and 'station' in selected_school:
             if is_within_range:
                 popup_text += f"\n✅ {travel_time:.0f} min from {selected_school['name']}"
             else:
                 popup_text += f"\n❌ {travel_time:.0f} min from {selected_school['name']} (too far)"
-        elif selected_school is not None and 'station' in selected_school:
-            popup_text += f"\n⚠️ No travel time data available to {selected_school['name']}"
         
         # Add school assignment info if any
         if pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
@@ -297,7 +303,7 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         ).add_to(m)
     
     # Add markers for schools
-    for _, school in schools_df.iterrows():
+    for _, school in schools_to_show.iterrows():
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
             is_selected = school['id'] == selected_school_id if selected_school_id else False
             # Create a pin marker for the school
