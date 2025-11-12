@@ -212,6 +212,7 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         # Determine if teacher is within 60 minutes of selected school
         is_within_range = False
         travel_time = float('inf')
+        color = 'blue'
         if selected_school is not None and 'station_uuid' in teacher and 'station_uuid' in selected_school:
             teacher_station = teacher['station_uuid']
             school_station = selected_school['station_uuid']
@@ -245,8 +246,6 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
             color = 'gray'  # Cannot move (has school and not willing to move)
         elif is_within_range:
             color = 'green'  # Within 60 minutes of selected school
-        else:
-            color = 'blue'  # Default color (available for assignment or willing to move)
         
         print(f"Color: {color}")
 
