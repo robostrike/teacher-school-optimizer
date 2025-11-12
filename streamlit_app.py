@@ -595,7 +595,6 @@ for i in range(0, total_teachers, cols_per_row):
                 # School selection
                 current_school_idx = school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0
                 new_school = st.selectbox(
-                    "Assigned School",
                     options=school_options,
                     index=current_school_idx,
                     key=f"school_{teacher['id']}",
