@@ -7,6 +7,7 @@ from folium.plugins import MarkerCluster
 from folium import Icon
 from typing import Optional, Tuple
 import display_utils
+import css_app
 
 # Set page config
 st.set_page_config(page_title="Teacher Optimizer", layout="wide")
@@ -490,83 +491,7 @@ if selected_school_id:
         st.info("No teachers found within 60 minutes of the selected school.")
 
 # Add custom CSS to make the directory more compact
-st.markdown("""
-    <style>
-    /* Make the teacher cards more compact */
-    .stContainer {
-        padding: 0.25rem !important;
-        gap: 0 !important;
-    }
-    
-    /* Remove all vertical gaps between elements */
-    .stVerticalBlock {
-        gap: 0.5rem !important;
-    }
-    
-    /* Specific class for teacher cards */
-    .st-emotion-cache-1ne20ew {
-        gap: 0 !important;
-    }
-    
-    .stMarkdown h3, .stMarkdown p, .stMarkdown div {
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1.1 !important;
-    }
-    
-    /* Teacher name and type */
-    .stMarkdown h3 {
-        font-size: 0.95rem !important;
-        line-height: 1.1 !important;
-    }
-    
-    /* Caption text (type and station) */
-    .stMarkdown .stCaption {
-        font-size: 0.75rem !important;
-        line-height: 1 !important;
-        margin-top: 0.1rem !important;
-    }
-    
-    /* Make the selectbox and checkbox more compact */
-    .stSelectbox, .stCheckbox {
-        margin: 0.1rem 0 !important;
-        font-size: 0.85rem !important;
-    }
-    
-    /* Reduce padding and height in the selectbox */
-    .stSelectbox > div > div {
-        padding: 0.15rem 0.75rem 0.15rem 0.5rem !important;
-        min-height: 1.5rem !important;
-    }
-    
-    /* Space between cards */
-    .stContainer > div {
-        margin: 0 !important;
-    }
-    
-    /* Make sure columns have the right spacing */
-    .stHorizontal > div[data-testid="column"] {
-        padding: 0 !important;
-    }
-    
-    /* Reduce space around status messages */
-    .stAlert {
-        padding: 0.25rem 0.5rem !important;
-        margin: 0.15rem 0 !important;
-        min-height: 1.5rem !important;
-    }
-    
-    /* Make form elements more compact */
-    .stTextInput, .stSelectbox, .stCheckbox {
-        margin-bottom: 0.15rem !important;
-    }
-    
-    /* Reduce space between form elements */
-    .element-container {
-        padding: 0.1rem 0 !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+st.markdown(css_app.get_custom_css(), unsafe_allow_html=True)
 
 st.write("Manage teacher assignments and move preferences")
 
@@ -576,12 +501,99 @@ temp_teachers = teachers_df.copy()
 # Display teachers in a responsive grid of cards
 st.subheader("Teacher Directory")
 
-# Create a grid of cards (4 cards per row on large screens)
-cols_per_row = 3
-total_teachers = len(teachers_df)
+# Add search and filter functionality
+search_col, filter_col = st.columns([3, 1])
 
-# Create a copy of teachers for editing
-temp_teachers = teachers_df.copy()
+# Search bar on the left
+with search_col:
+    search_term = st.text_input("Search teachers by name, type, or station", "", 
+                              help="Search by teacher name, type (Bilingual/Native), or station name")
+
+# Filters on the right
+with filter_col:
+    with st.container():
+        st.markdown("### 🔍 Filters")
+        
+        # Type filters - Radio buttons for mutually exclusive selection
+        teacher_type = st.radio(
+            "**Teacher Type**",
+            ["All", "Bilingual", "Native"],
+            index=0,
+            key="teacher_type_filter"
+        )
+        
+        # Gender filters - Radio buttons for mutually exclusive selection
+        gender = st.radio(
+            "**Gender**",
+            ["All", "Male", "Female"],
+            index=0,
+            key="gender_filter"
+        )
+        
+        # Add a clear filters button
+        if st.button("Clear All Filters"):
+            st.session_state.teacher_type_filter = "All"
+            st.session_state.gender_filter = "All"
+            st.rerun()
+
+# Initialize filtered_teachers in session state if it doesn't exist
+if 'filtered_teachers' not in st.session_state:
+    st.session_state.filtered_teachers = teachers_df.copy()
+
+# Always apply filters to ensure the display is up to date
+filtered = teachers_df.copy()
+
+# Apply search term filter
+if search_term:
+    search_term = search_term.lower().strip()
+    if search_term:
+        mask = (
+            filtered['name'].str.lower().str.contains(search_term, na=False) |
+            filtered['type'].str.lower().str.contains(search_term, na=False) |
+            filtered['station'].str.lower().str.contains(search_term, na=False)
+        )
+        filtered = filtered[mask].copy()
+
+# Apply type filter
+if teacher_type != "All":
+    filtered = filtered[filtered['type'] == teacher_type].copy()
+
+# Apply gender filter
+if gender != "All":
+    filtered = filtered[filtered['gender'] == gender].copy()
+
+# Update session state with filtered results
+filtered_teachers = filtered.reset_index(drop=True)
+
+# Display message if no teachers match
+if filtered_teachers.empty:
+    st.info("No teachers match the current filters. Try adjusting your search criteria.")
+
+# Create a grid of cards (3 cards per row)
+cols_per_row = 3
+total_teachers = len(filtered_teachers)
+
+# Create a copy of filtered teachers for display
+display_teachers = filtered_teachers.copy()
+
+# Display the teachers
+for i in range(0, total_teachers, cols_per_row):
+    # Create a row of cards
+    cols = st.columns(cols_per_row)
+    
+    # Fill the current row with cards
+    for col_idx in range(cols_per_row):
+        teacher_idx = i + col_idx
+        if teacher_idx < total_teachers:
+            teacher = display_teachers.iloc[teacher_idx]
+            with cols[col_idx]:
+                # Display teacher card
+                st.markdown(f"""
+                <div class="teacher-card" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                    <h3>{teacher['name']}</h3>
+                    <p class="stCaption">{teacher['type']} • {teacher['station']}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 for i in range(0, total_teachers, cols_per_row):
     # Create a row of cards
@@ -671,7 +683,7 @@ col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     st.metric("Total Schools", len(schools_df))
-    st.metric("Schools with No Students", f"{occupancy.sum()} ({occupancy.mean()*100:.1f}%)")
+    st.metric("Schools with No Teachers", f"{occupancy.sum()} ({occupancy.mean()*100:.1f}%)")
 
 with col2:
     st.metric("Schools with 2+ Teachers", 
