@@ -484,6 +484,7 @@ if selected_school_id:
         else:
             st.info("No teachers found within 60 minutes of the selected school.")
         
+        
     else:
         st.info("No teachers found within 60 minutes of the selected school.")
 
@@ -594,11 +595,15 @@ for i in range(0, total_teachers, cols_per_row):
                 
                 # School selection
                 current_school_idx = school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0
+                # Empty label with CSS to hide it but keep it accessible
+                st.markdown("<style>.school-select-label { display: none; }</style>", unsafe_allow_html=True)
                 new_school = st.selectbox(
+                    " ",  # Empty space for label (required by Streamlit)
                     options=school_options,
                     index=current_school_idx,
                     key=f"school_{teacher['id']}",
-                    format_func=lambda x: school_display.get(x, "No School")
+                    format_func=lambda x: school_display.get(x, "No School"),
+                    label_visibility="collapsed"  # This hides the label
                 )
                 temp_teachers.at[teacher_idx, 'school_id'] = new_school if new_school else None
                 
