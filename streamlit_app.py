@@ -501,40 +501,42 @@ temp_teachers = teachers_df.copy()
 # Display teachers in a responsive grid of cards
 st.subheader("Teacher Directory")
 
-# Add search and filter functionality
-search_col, filter_col = st.columns([3, 1])
+# Create a 3-column layout for filters
+search_col, type_col, gender_col = st.columns([2, 1, 1])
 
-# Search bar on the left
+# Search bar in the first column
 with search_col:
-    search_term = st.text_input("Search teachers by name, type, or station", "", 
-                              help="Search by teacher name, type (Bilingual/Native), or station name")
+    search_term = st.text_input(
+        "Search teachers by name, type, or station", 
+        "",
+        help="Search by teacher name, type (Bilingual/Native), or station name"
+    )
 
-# Filters on the right
-with filter_col:
-    with st.container():
-        st.markdown("### 🔍 Filters")
-        
-        # Type filters - Radio buttons for mutually exclusive selection
-        teacher_type = st.radio(
-            "**Teacher Type**",
-            ["All", "Bilingual", "Native"],
-            index=0,
-            key="teacher_type_filter"
-        )
-        
-        # Gender filters - Radio buttons for mutually exclusive selection
-        gender = st.radio(
-            "**Gender**",
-            ["All", "Male", "Female"],
-            index=0,
-            key="gender_filter"
-        )
-        
-        # Add a clear filters button
-        if st.button("Clear All Filters"):
-            st.session_state.teacher_type_filter = "All"
-            st.session_state.gender_filter = "All"
-            st.rerun()
+# Teacher type filter in the second column
+with type_col:
+    teacher_type = st.radio(
+        "**Teacher Type**",
+        ["All", "Bilingual", "Native"],
+        index=0,
+        key="teacher_type_filter",
+        horizontal=True
+    )
+
+# Gender filter in the third column
+with gender_col:
+    gender = st.radio(
+        "**Gender**",
+        ["All", "Male", "Female"],
+        index=0,
+        key="gender_filter",
+        horizontal=True
+    )
+
+# Clear filters button below the columns
+if st.button("Clear All Filters"):
+    st.session_state.teacher_type_filter = "All"
+    st.session_state.gender_filter = "All"
+    st.rerun()
 
 # Initialize filtered_teachers in session state if it doesn't exist
 if 'filtered_teachers' not in st.session_state:
@@ -573,28 +575,7 @@ if filtered_teachers.empty:
 cols_per_row = 3
 total_teachers = len(filtered_teachers)
 
-# Create a copy of filtered teachers for display
-display_teachers = filtered_teachers.copy()
-
-# Display the teachers
-for i in range(0, total_teachers, cols_per_row):
-    # Create a row of cards
-    cols = st.columns(cols_per_row)
-    
-    # Fill the current row with cards
-    for col_idx in range(cols_per_row):
-        teacher_idx = i + col_idx
-        if teacher_idx < total_teachers:
-            teacher = display_teachers.iloc[teacher_idx]
-            with cols[col_idx]:
-                # Display teacher card
-                st.markdown(f"""
-                <div class="teacher-card" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
-                    <h3>{teacher['name']}</h3>
-                    <p class="stCaption">{teacher['type']} • {teacher['station']}</p>
-                </div>
-                """, unsafe_allow_html=True)
-
+# Display the teachers with full functionality
 for i in range(0, total_teachers, cols_per_row):
     # Create a row of cards
     cols = st.columns(cols_per_row)
@@ -605,7 +586,15 @@ for i in range(0, total_teachers, cols_per_row):
         if teacher_idx >= total_teachers:
             break
             
-        teacher = teachers_df.iloc[teacher_idx]
+        # Get teacher from the filtered list and get the original index
+        filtered_teacher = filtered_teachers.iloc[teacher_idx]
+        teacher_id = filtered_teacher['id']
+        
+        # Find the teacher in the original DataFrame
+        teacher_mask = teachers_df['id'] == teacher_id
+        teacher_idx_original = teachers_df[teacher_mask].index[0]
+        teacher = teachers_df.loc[teacher_idx_original].copy()
+        
         current_school = teacher.get('school_id', '')
         can_move = pd.isna(current_school) or current_school == ''
         
@@ -618,27 +607,30 @@ for i in range(0, total_teachers, cols_per_row):
                 
                 # School selection
                 current_school_idx = school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0
-                # Empty label with CSS to hide it but keep it accessible
-                st.markdown("<style>.school-select-label { display: none; }</style>", unsafe_allow_html=True)
+                
+                # School selection dropdown
                 new_school = st.selectbox(
                     " ",  # Empty space for label (required by Streamlit)
                     options=school_options,
                     index=current_school_idx,
-                    key=f"school_{teacher['id']}",
+                    key=f"school_{teacher_id}",
                     format_func=lambda x: school_display.get(x, "No School"),
-                    label_visibility="collapsed"  # This hides the label
+                    label_visibility="collapsed"
                 )
-                temp_teachers.at[teacher_idx, 'school_id'] = new_school if new_school else None
                 
-                # Move preference
+                # Update the teacher's school in the original DataFrame
+                if new_school != current_school:
+                    teachers_df.loc[teacher_mask, 'school_id'] = new_school if new_school else None
+                
+                # Move preference checkbox
                 move = st.checkbox(
                     "Willing to Move",
                     value=teacher.get('move', False),
                     disabled=can_move,
-                    key=f"move_{teacher['id']}",
+                    key=f"move_{teacher_id}",
                     help="Check if teacher is willing to move to a different school"
                 )
-                temp_teachers.at[teacher_idx, 'move'] = move
+                teachers_df.loc[teacher_mask, 'move'] = move
                 
                 # Status indicator with color coding
                 status_container = st.container()

@@ -1,21 +1,21 @@
-id,name,gender,type,station,station_id,move
-T001,清水 翔,Male,Bilingual,Noborito,a297471a-ee2c-4c83-bda5-16641aeb3d6a,False
-T002,佐藤 結菜,Female,Native,Minami-ōsawa,5b43482a-15cd-4d69-8f6a-ec110733944f,True
-T003,山本 颯太,Male,Native,Kita-Kōnosu,ec6718fe-14f1-49ac-8608-795d04e7a936,False
-T004,前田 花子,Female,Native,Kinomiya,c375e664-e17b-46dd-b99c-9b88eb5f5882,True
-T005,佐藤 拓哉,Male,Native,Higashi-Fushimi,63ddd88e-bfdf-4232-a16f-0b8099f9da61,True
-T006,高橋 結菜,Female,Native,Shin-ochanomizu,d71fc62b-be98-4a44-b584-e1a5dbe44960,True
-T007,岡田 葵,Female,Native,Kobuchi,c8342a91-5b76-4c02-b00f-31a2cd87cc72,False
-T008,長谷川 さくら,Female,Native,Tsukuda,86343578-9e77-4b27-87d9-52873ae4d687,True
-T009,林 陽斗,Male,Native,Minami-senju,9c091ef4-b776-4438-b503-236b2537a0b9,True
-T010,池田 蓮,Male,Bilingual,Fujigaoka,20be2c3f-d237-4e6d-802f-9b8f3a3e14de,True
-T011,岡田 大樹,Male,Bilingual,Miyayama,88fa151f-88c3-4ce0-877f-4b7cab9ae1c0,True
-T012,山田 恵,Female,Native,Kita-Ikebukuro,e225645c-2075-481a-ab93-60f4ce85a2cd,True
-T013,清水 愛菜,Female,Bilingual,Keisei Nishifuna,eca05b2b-cd69-40a0-bf00-ee508376e697,True
-T014,橋本 大輔,Male,Native,Ikenoue,7fb3189e-11c2-4c46-8200-61f4fefcd723,False
-T015,阿部 愛美,Female,Native,Motoyawata,0a3123fb-7dcc-44c3-ad19-2200babd2880,True
-T016,長谷川 大雅,Male,Native,Onjuku,391d4af4-4933-43df-a063-babdda2ee1dc,True
-T017,前田 蓮,Male,Native,Kokkai-gijidō-mae,191b68f7-0223-4311-aa32-9aa490954d11,False
-T018,長谷川 美咲,Female,Native,Futako-Tamagawa,4c982644-2262-4bd7-a000-7957d12bbaf0,False
-T019,山田 美月,Female,Native,Isobe,018b82f9-446a-4268-9395-9c355f5c1015,True
-T020,中村 颯太,Male,Native,Musashi-Yamato,9eb69194-bc3d-409b-94b6-08cf59fa70bb,True
+id,name,gender,type,station,station_id,move,school_id,station_lat,station_lon
+T001,清水 翔,Male,Bilingual,Noborito,a297471a-ee2c-4c83-bda5-16641aeb3d6a,False,,35.4743593,139.3997966
+T002,佐藤 結菜,Female,Native,Minami-ōsawa,5b43482a-15cd-4d69-8f6a-ec110733944f,True,,35.6141774,139.3800458
+T003,山本 颯太,Male,Native,Kita-Kōnosu,ec6718fe-14f1-49ac-8608-795d04e7a936,False,,35.7396773,139.7612694
+T004,前田 花子,Female,Native,Kinomiya,c375e664-e17b-46dd-b99c-9b88eb5f5882,True,KD1928,35.6832291,139.7681325
+T005,佐藤 拓哉,Male,Native,Higashi-Fushimi,63ddd88e-bfdf-4232-a16f-0b8099f9da61,True,KD2866,35.7286904,139.5642362
+T006,高橋 結菜,Female,Native,Shin-ochanomizu,d71fc62b-be98-4a44-b584-e1a5dbe44960,True,,35.696932,139.7654321
+T007,岡田 葵,Female,Native,Kobuchi,c8342a91-5b76-4c02-b00f-31a2cd87cc72,False,KD1192,35.5532338,139.4224569
+T008,長谷川 さくら,Female,Native,Tsukuda,86343578-9e77-4b27-87d9-52873ae4d687,True,,35.6812996,139.7670658
+T009,林 陽斗,Male,Native,Minami-senju,9c091ef4-b776-4438-b503-236b2537a0b9,True,,35.7339347,139.7994102
+T010,池田 蓮,Male,Bilingual,Fujigaoka,20be2c3f-d237-4e6d-802f-9b8f3a3e14de,True,KD1928,35.5434959,139.5278557
+T011,岡田 大樹,Male,Bilingual,Miyayama,88fa151f-88c3-4ce0-877f-4b7cab9ae1c0,True,,35.3767218,139.3844727
+T012,山田 恵,Female,Native,Kita-Ikebukuro,e225645c-2075-481a-ab93-60f4ce85a2cd,True,,35.7406552,139.7166436
+T013,清水 愛菜,Female,Bilingual,Keisei Nishifuna,eca05b2b-cd69-40a0-bf00-ee508376e697,True,KD1192,35.7115501,139.9589401
+T014,橋本 大輔,Male,Native,Ikenoue,7fb3189e-11c2-4c46-8200-61f4fefcd723,False,KD2384,35.660462,139.6730494
+T015,阿部 愛美,Female,Native,Motoyawata,0a3123fb-7dcc-44c3-ad19-2200babd2880,True,,35.6888975,139.8136999
+T016,長谷川 大雅,Male,Native,Onjuku,391d4af4-4933-43df-a063-babdda2ee1dc,True,,35.1916097,140.3485902
+T017,前田 蓮,Male,Native,Kokkai-gijidō-mae,191b68f7-0223-4311-aa32-9aa490954d11,False,,35.67389590000001,139.7449634
+T018,長谷川 美咲,Female,Native,Futako-Tamagawa,4c982644-2262-4bd7-a000-7957d12bbaf0,False,,35.6124172,139.6275666
+T019,山田 美月,Female,Native,Isobe,018b82f9-446a-4268-9395-9c355f5c1015,True,,36.301246,138.8560912
+T020,中村 颯太,Male,Native,Musashi-Yamato,9eb69194-bc3d-409b-94b6-08cf59fa70bb,True,,35.756417,139.444263
