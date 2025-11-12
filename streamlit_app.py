@@ -536,7 +536,7 @@ temp_teachers = teachers_df.copy()
 st.subheader("Teacher Directory")
 
 # Create a grid of cards (4 cards per row on large screens)
-cols_per_row = 4
+cols_per_row = 3
 total_teachers = len(teachers_df)
 
 # Create a copy of teachers for editing
