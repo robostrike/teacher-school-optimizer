@@ -497,18 +497,24 @@ st.markdown("""
         padding: 0.25rem !important;
     }
     
-    /* Reduce spacing between elements */
-    .stMarkdown h3 {
-        margin: 0.1rem 0 !important;
-        font-size: 0.95rem !important;
-        line-height: 1.2 !important;
+    /* Remove all vertical gaps between elements */
+    .stMarkdown h3, .stMarkdown p, .stMarkdown div {
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 1.1 !important;
     }
     
-    /* Make the caption text smaller and tighter */
+    /* Teacher name and type */
+    .stMarkdown h3 {
+        font-size: 0.95rem !important;
+        line-height: 1.1 !important;
+    }
+    
+    /* Caption text (type and station) */
     .stMarkdown .stCaption {
         font-size: 0.75rem !important;
-        margin: 0.1rem 0 !important;
-        line-height: 1.1 !important;
+        line-height: 1 !important;
+        margin-top: 0.1rem !important;
     }
     
     /* Make the selectbox and checkbox more compact */
@@ -523,9 +529,14 @@ st.markdown("""
         min-height: 1.5rem !important;
     }
     
-    /* Make the cards take up less vertical space */
+    /* Space between cards */
     .stContainer > div {
-        margin-bottom: 0.25rem !important;
+        margin: 0 0.1rem 0.2rem 0.1rem !important;
+    }
+    
+    /* Make sure columns have the right spacing */
+    .stHorizontal > div[data-testid="column"] {
+        padding: 0 0.1rem !important;
     }
     
     /* Reduce space around status messages */
