@@ -368,18 +368,8 @@ school_options = [""] + sorted(schools_df['id'].tolist())
 selected_school_id = st.sidebar.selectbox(
     "Select a school to see teachers within 60 minutes",
     school_options,
-    format_func=format_school_option,
-    key='school_selector'
+    format_func=format_school_option
 )
-
-# Log when a school is selected
-if 'last_selected_school' not in st.session_state:
-    st.session_state.last_selected_school = None
-
-if selected_school_id and selected_school_id != st.session_state.last_selected_school:
-    school_name = schools_df[schools_df['id'] == selected_school_id]['name'].iloc[0] if not schools_df[schools_df['id'] == selected_school_id].empty else 'Unknown School'
-    print(f"School selected: {school_name} (ID: {selected_school_id})")
-    st.session_state.last_selected_school = selected_school_id
 
 # Show assigned teachers for the selected school
 if selected_school_id:
