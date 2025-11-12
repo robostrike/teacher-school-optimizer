@@ -497,9 +497,7 @@ st.markdown("""
     }
     
     /* Remove all vertical gaps between elements */
-    .stMarkdown h3, .stMarkdown p, .stMarkdown div, 
-    .stVerticalBlock, .stElementContainer, .stHeading, 
-    .stSelectbox, .stAlert, .stMarkdown {
+    .stMarkdown h3, .stMarkdown p, .stMarkdown div {
         margin: 0 !important;
         padding: 0 !important;
         line-height: 1.1 !important;
@@ -508,7 +506,7 @@ st.markdown("""
     /* Teacher name and type */
     .stMarkdown h3 {
         font-size: 0.95rem !important;
-        line-height: 1 !important;
+        line-height: 1.1 !important;
     }
     
     /* Caption text (type and station) */
@@ -527,7 +525,7 @@ st.markdown("""
     /* Reduce padding and height in the selectbox */
     .stSelectbox > div > div {
         padding: 0.15rem 0.75rem 0.15rem 0.5rem !important;
-        min-height: 1rem !important;
+        min-height: 1.5rem !important;
     }
     
     /* Space between cards */
@@ -542,24 +540,9 @@ st.markdown("""
     
     /* Reduce space around status messages */
     .stAlert {
-        padding: 0.1rem 0.3rem !important;
-        margin: 0 !important;
-        min-height: 1rem !important;
-    }
-    
-    /* School filter section specific styles */
-    .stVerticalBlock.st-emotion-cache-tn0cau {
-        gap: 0 !important;
-    }
-    
-    .st-emotion-cache-1vo6xi6 {
-        padding: 0 !important;
-        margin: 0 !important;
-    }
-    
-    .stHeading h3 {
-        margin: 0 !important;
-        padding: 0.2rem 0 !important;
+        padding: 0.25rem 0.5rem !important;
+        margin: 0.15rem 0 !important;
+        min-height: 1.5rem !important;
     }
     
     /* Make form elements more compact */
