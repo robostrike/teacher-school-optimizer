@@ -20,11 +20,12 @@ ASSIGNMENTS_FILE = DATA_DIR / "teacher_school_assignments.csv"
 
 @st.cache_data
 def load_teachers():
-    """Load teacher data from CSV"""
+    """Load teacher data from CSV and merge with assignments"""
+    # Load teachers
     df = pd.read_csv(TEACHERS_FILE)
+    
     # Handle 'move' column with proper type conversion
     if 'move' in df.columns:
-        # Convert to string first, then handle true/false values
         df['move'] = df['move'].astype(str).str.lower().replace({
             'true': True,
             'false': False,
@@ -32,8 +33,31 @@ def load_teachers():
             '': False
         }).astype(bool)
     else:
-        # If 'move' column doesn't exist, create it with False as default
         df['move'] = False
+    
+    # Load current assignments
+    if os.path.exists(ASSIGNMENTS_FILE):
+        assignments = pd.read_csv(ASSIGNMENTS_FILE)
+        current_assignments = assignments[assignments['is_current'] == True]
+        
+        # Merge with teachers to get school assignments
+        df = pd.merge(
+            df,
+            current_assignments[['teacher_id', 'school_id']],
+            left_on='id',
+            right_on='teacher_id',
+            how='left'
+        )
+        
+        # Clean up the merged columns
+        df.drop(columns=['teacher_id'], inplace=True, errors='ignore')
+        
+        # Ensure school_id is string and handle NaN values
+        if 'school_id' in df.columns:
+            df['school_id'] = df['school_id'].fillna('').astype(str)
+        else:
+            df['school_id'] = ''
+    
     return df
 
 @st.cache_data
