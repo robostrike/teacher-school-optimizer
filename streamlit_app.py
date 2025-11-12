@@ -6,6 +6,7 @@ from pathlib import Path
 from folium.plugins import MarkerCluster
 from folium import Icon
 from typing import Optional, Tuple
+import display_utils
 
 # Set page config
 st.set_page_config(page_title="Teacher Optimizer", layout="wide")
@@ -375,7 +376,7 @@ def format_school_option(school_id):
 # Create school options with teacher counts
 school_options = [""] + sorted(schools_df['id'].tolist())
 selected_school_id = st.sidebar.selectbox(
-    "Select a school to see teachers within 60 minutes",
+    "Select a school...",
     school_options,
     format_func=format_school_option
 )
@@ -656,6 +657,76 @@ if st.button("Save Changes"):
     save_assignments(assignments_df)
     st.success("Changes saved successfully!")
     st.rerun()
+
+# Display school statistics
+st.header("School Statistics")
+
+# Calculate and display occupancy
+occupancy = display_utils.display_school_occupancy(assignments_df, schools_df)
+balance = display_utils.check_school_balance(assignments_df, teachers_df)
+balance_summary = display_utils.get_school_balance_summary(balance)
+
+# Create columns for metrics
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("Total Schools", len(schools_df))
+    st.metric("Schools with No Students", f"{occupancy.sum()} ({occupancy.mean()*100:.1f}%)")
+
+with col2:
+    st.metric("Schools with 2+ Teachers", 
+             f"{balance_summary['schools_with_2plus_teachers']} "
+             f"({balance_summary['schools_with_2plus_teachers']/len(schools_df)*100:.1f}%)")
+
+with col3:
+    if balance_summary['schools_with_2plus_teachers'] > 0:
+        gender_balance_pct = (balance_summary['schools_with_gender_balance'] / 
+                            balance_summary['schools_with_2plus_teachers'] * 100)
+        st.metric("Gender Balanced Schools", 
+                 f"{balance_summary['schools_with_gender_balance']} "
+                 f"({gender_balance_pct:.1f}% of 2+ teacher schools)")
+    else:
+        st.metric("Gender Balanced Schools", "N/A")
+
+with col4:
+    schools_with_3plus = balance[balance['teacher_count'] > 2]
+    if not schools_with_3plus.empty:
+        bilingual_pct = (balance_summary['schools_with_bilingual'] / 
+                        len(schools_with_3plus) * 100)
+        st.metric("Schools with Bilingual", 
+                 f"{balance_summary['schools_with_bilingual']} "
+                 f"({bilingual_pct:.1f}% of 3+ teacher schools)")
+    else:
+        st.metric("Schools with Bilingual", "N/A")
+
+# Display detailed balance information
+with st.expander("View Detailed School Balance"):
+    if not balance.empty:
+        # Merge with school names for better display
+        display_balance = balance.merge(
+            schools_df[['id', 'name']], 
+            left_on='school_id', 
+            right_on='id',
+            how='left'
+        )
+        display_balance = display_balance[[
+            'school_id', 'name', 'teacher_count', 'has_both_genders', 'has_bilingual'
+        ]]
+        display_balance = display_balance.rename(columns={
+            'school_id': 'School ID',
+            'name': 'School Name',
+            'teacher_count': 'Teacher Count',
+            'has_both_genders': 'Has Gender Balance',
+            'has_bilingual': 'Has Bilingual Teacher'
+        })
+        
+        # Format boolean columns
+        display_balance['Has Gender Balance'] = display_balance['Has Gender Balance'].map({1: '✅', 0: '❌'})
+        display_balance['Has Bilingual Teacher'] = display_balance['Has Bilingual Teacher'].map({1: '✅', 0: '❌'})
+        
+        st.dataframe(display_balance, use_container_width=True)
+    else:
+        st.info("No school balance data available.")
 
 # Display current data
 expander = st.expander("View Raw Data")
