@@ -484,8 +484,6 @@ if selected_school_id:
         else:
             st.info("No teachers found within 60 minutes of the selected school.")
         
-        # Add a simple message about the teachers list
-        st.info(f"Found {len(display_df)} teachers within 60 minutes of {selected_school['name']}.")
     else:
         st.info("No teachers found within 60 minutes of the selected school.")
 
