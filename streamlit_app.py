@@ -183,17 +183,9 @@ def get_travel_time(origin_id, dest_id, travel_times_df):
             print(f"DataFrame sample: {travel_times_df.head(1).to_dict()}")
         return float('inf')
 
-def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
-    # Create a base map centered on Tokyo with settings to prevent clustering
-    m = folium.Map(
-        location=[35.6895, 139.6917],
-        zoom_start=11,
-        min_zoom=10,
-        max_zoom=18,
-        min_lat=35.3,
-        max_lat=35.9,
-        min_lon=139.4,
-        max_lon=140.0,
+def calculate_teacher_colors(teachers_df, selected_school, travel_times_df):
+    """Pre-calculate colors for all teachers based on travel time to selected school"""
+    teacher_colors = {}
     
     for _, teacher in teachers_df.iterrows():
         if pd.isna(teacher.get('station_lat')) or pd.isna(teacher.get('station_lon')):
