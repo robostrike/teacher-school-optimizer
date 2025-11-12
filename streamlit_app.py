@@ -508,13 +508,13 @@ st.markdown("""
     /* Teacher name and type */
     .stMarkdown h3 {
         font-size: 0.95rem !important;
-        line-height: 0.25 !important;
+        line-height: 1 !important;
     }
     
     /* Caption text (type and station) */
     .stMarkdown .stCaption {
         font-size: 0.75rem !important;
-        line-height: 0.25 !important;
+        line-height: 1 !important;
         margin-top: 0.1rem !important;
     }
     
@@ -527,7 +527,7 @@ st.markdown("""
     /* Reduce padding and height in the selectbox */
     .stSelectbox > div > div {
         padding: 0.15rem 0.75rem 0.15rem 0.5rem !important;
-        min-height: 1.5rem !important;
+        min-height: 1rem !important;
     }
     
     /* Space between cards */
@@ -544,7 +544,7 @@ st.markdown("""
     .stAlert {
         padding: 0.1rem 0.3rem !important;
         margin: 0 !important;
-        min-height: 1.2rem !important;
+        min-height: 1rem !important;
     }
     
     /* School filter section specific styles */
