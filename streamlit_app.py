@@ -494,35 +494,55 @@ st.markdown("""
     <style>
     /* Make the teacher cards more compact */
     .stContainer {
-        padding: 0.5rem !important;
+        padding: 0.25rem !important;
     }
     
     /* Reduce spacing between elements */
     .stMarkdown h3 {
-        margin: 0.25rem 0 !important;
-        font-size: 1rem !important;
+        margin: 0.1rem 0 !important;
+        font-size: 0.95rem !important;
+        line-height: 1.2 !important;
     }
     
-    /* Make the caption text smaller */
+    /* Make the caption text smaller and tighter */
     .stMarkdown .stCaption {
-        font-size: 0.8rem !important;
-        margin-bottom: 0.25rem !important;
+        font-size: 0.75rem !important;
+        margin: 0.1rem 0 !important;
+        line-height: 1.1 !important;
     }
     
-    /* Make the selectbox and checkbox smaller */
+    /* Make the selectbox and checkbox more compact */
     .stSelectbox, .stCheckbox {
-        margin: 0.25rem 0 !important;
-        font-size: 0.9rem !important;
+        margin: 0.1rem 0 !important;
+        font-size: 0.85rem !important;
     }
     
-    /* Reduce padding in the selectbox */
+    /* Reduce padding and height in the selectbox */
     .stSelectbox > div > div {
-        padding: 0.25rem 1rem 0.25rem 0.5rem !important;
+        padding: 0.15rem 0.75rem 0.15rem 0.5rem !important;
+        min-height: 1.5rem !important;
     }
     
     /* Make the cards take up less vertical space */
     .stContainer > div {
-        margin-bottom: 0.5rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+    
+    /* Reduce space around status messages */
+    .stAlert {
+        padding: 0.25rem 0.5rem !important;
+        margin: 0.15rem 0 !important;
+        min-height: 1.5rem !important;
+    }
+    
+    /* Make form elements more compact */
+    .stTextInput, .stSelectbox, .stCheckbox {
+        margin-bottom: 0.15rem !important;
+    }
+    
+    /* Reduce space between form elements */
+    .element-container {
+        padding: 0.1rem 0 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -590,9 +610,9 @@ for i in range(0, total_teachers, cols_per_row):
                     if can_move:
                         st.info("Reassignable", icon="ℹ️")
                     elif move:
-                        st.warning("Open to relocation", icon="🔄")
+                        st.warning("Open", icon="🔄")
                     else:
-                        st.success("Stable assignment", icon="✅")
+                        st.success("Stable", icon="✅")
 
 # Save button
 if st.button("Save Changes"):
