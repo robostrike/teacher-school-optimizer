@@ -267,11 +267,13 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
 
         # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
-        if selected_school is not None and 'station' in selected_school:
+        if selected_school is not None and 'station' in selected_school and travel_time is not None:
             if is_within_range:
                 popup_text += f"\n✅ {travel_time:.0f} min from {selected_school['name']}"
             else:
                 popup_text += f"\n❌ {travel_time:.0f} min from {selected_school['name']} (too far)"
+        elif selected_school is not None and 'station' in selected_school:
+            popup_text += f"\n⚠️ No travel time data available to {selected_school['name']}"
         
         # Add school assignment info if any
         if pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
@@ -295,7 +297,7 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         ).add_to(m)
     
     # Add markers for schools
-    for _, school in schools_to_show.iterrows():
+    for _, school in schools_df.iterrows():
         if pd.notna(school.get('latitude')) and pd.notna(school.get('longitude')):
             is_selected = school['id'] == selected_school_id if selected_school_id else False
             # Create a pin marker for the school
