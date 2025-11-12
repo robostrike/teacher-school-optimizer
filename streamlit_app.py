@@ -489,6 +489,44 @@ if selected_school_id:
     else:
         st.info("No teachers found within 60 minutes of the selected school.")
 
+# Add custom CSS to make the directory more compact
+st.markdown("""
+    <style>
+    /* Make the teacher cards more compact */
+    .stContainer {
+        padding: 0.5rem !important;
+    }
+    
+    /* Reduce spacing between elements */
+    .stMarkdown h3 {
+        margin: 0.25rem 0 !important;
+        font-size: 1rem !important;
+    }
+    
+    /* Make the caption text smaller */
+    .stMarkdown .stCaption {
+        font-size: 0.8rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+    
+    /* Make the selectbox and checkbox smaller */
+    .stSelectbox, .stCheckbox {
+        margin: 0.25rem 0 !important;
+        font-size: 0.9rem !important;
+    }
+    
+    /* Reduce padding in the selectbox */
+    .stSelectbox > div > div {
+        padding: 0.25rem 1rem 0.25rem 0.5rem !important;
+    }
+    
+    /* Make the cards take up less vertical space */
+    .stContainer > div {
+        margin-bottom: 0.5rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.write("Manage teacher assignments and move preferences")
 
 # Create form for editing
@@ -497,8 +535,8 @@ temp_teachers = teachers_df.copy()
 # Display teachers in a responsive grid of cards
 st.subheader("Teacher Directory")
 
-# Create a grid of cards (3 cards per row on large screens)
-cols_per_row = 3
+# Create a grid of cards (4 cards per row on large screens)
+cols_per_row = 4
 total_teachers = len(teachers_df)
 
 # Create a copy of teachers for editing
