@@ -194,63 +194,84 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         max_lat=35.9,
         min_lon=139.4,
         max_lon=140.0,
-    )
     
-    # Filter schools if a specific school is selected
-    if selected_school_id:
-        schools_to_show = schools_df[schools_df['id'] == selected_school_id]
-        selected_school = schools_to_show.iloc[0] if not schools_to_show.empty else None
-    else:
-        schools_to_show = schools_df
-        selected_school = None
-    
-    # Add markers for each teacher
     for _, teacher in teachers_df.iterrows():
         if pd.isna(teacher.get('station_lat')) or pd.isna(teacher.get('station_lon')):
             continue
             
-        # Determine if teacher is within 60 minutes of selected school
         is_within_range = False
-        travel_time = float('inf')
-        color = 'blue'
-        if selected_school is not None and 'station_uuid' in teacher and 'station_uuid' in selected_school:
-            teacher_station = teacher['station_uuid']
-            school_station = selected_school['station_uuid']
-            
-            # Debug: Print station information
-            debug_info = f"""
-            === DEBUG INFO ===
-            Teacher: {teacher['name']}
-            Teacher Station UUID: {teacher_station}
-            School: {selected_school['name']}
-            School Station UUID: {school_station}
-            """
-            print(debug_info)
-            
-            try:
-                travel_time = get_travel_time(
-                    teacher_station,
-                    school_station,
-                    travel_times_df
-                )
-                print(f"Travel time: {travel_time}")
-                is_within_range = travel_time <= 60
-            except Exception as e:
-                error_msg = f"Error calculating travel time: {e}"
-                print(error_msg)
-                st.warning(error_msg)
-                is_within_range = False
+        travel_time = None
         
-        # Reset color for each teacher
-        color = 'blue'  # Default color
+        # Check if we have a selected school and travel time data
+        if selected_school is not None and 'station' in selected_school and travel_times_df is not None:
+            teacher_station = teacher.get('station_id')
+            school_station = selected_school.get('station_id')
+            
+            if not pd.isna(teacher_station) and not pd.isna(school_station):
+                try:
+                    travel_time = get_travel_time(
+                        teacher_station,
+                        school_station,
+                        travel_times_df
+                    )
+                    print(f"Travel time for {teacher['name']}: {travel_time}")
+                    is_within_range = travel_time <= 60
+                except Exception as e:
+                    error_msg = f"Error calculating travel time for {teacher['name']}: {e}"
+                    print(error_msg)
+                    st.warning(error_msg)
         
-        # Determine icon color based on status and range
+        # Determine color
         if not teacher.get('move', False) and pd.notna(teacher.get('school_id')) and teacher.get('school_id') != '':
             color = 'gray'  # Cannot move (has school and not willing to move)
         elif is_within_range:
             color = 'green'  # Within 60 minutes of selected school
+        else:
+            color = 'blue'  # Default color
+            
+        teacher_colors[teacher['id']] = {
+            'color': color,
+            'travel_time': travel_time,
+            'is_within_range': is_within_range
+        }
         
         print(f"Color for {teacher['name']}: {color}")
+    
+    return teacher_colors
+
+def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
+    # Create a map centered on Tokyo
+    tokyo_coords = [35.6804, 139.7690]
+    m = folium.Map(location=tokyo_coords, zoom_start=12)
+    
+    # Add school markers
+    for _, school in schools_df.iterrows():
+        # Only add station marker if school has station data
+        if pd.notna(school.get('station_lat')) and pd.notna(school.get('station_lon')):
+            folium.Marker(
+                [school['station_lat'], school['station_lon']],
+                popup=f"{school['name']} (School)",
+                icon=folium.Icon(color='red', icon='school', prefix='fa')
+            ).add_to(m)
+    
+    # Get selected school
+    selected_school = None
+    if selected_school_id and not pd.isna(selected_school_id):
+        selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0] if not schools_df[schools_df['id'] == selected_school_id].empty else None
+    
+    # Pre-calculate all teacher colors and travel times
+    teacher_colors = calculate_teacher_colors(teachers_df, selected_school, travel_times_df)
+    
+    # Add teacher markers using pre-calculated colors
+    for _, teacher in teachers_df.iterrows():
+        if pd.isna(teacher.get('station_lat')) or pd.isna(teacher.get('station_lon')):
+            continue
+            
+        teacher_id = teacher['id']
+        color_data = teacher_colors.get(teacher_id, {'color': 'blue', 'travel_time': None, 'is_within_range': False})
+        color = color_data['color']
+        travel_time = color_data['travel_time']
+        is_within_range = color_data['is_within_range']
 
         # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
