@@ -28,6 +28,10 @@ travel_times_df = load_travel_times()
 
 # Get school options for dropdowns
 school_options, school_display = get_school_options(schools_df)
+# Ensure school_display has all school_ids mapped
+for school_id in school_options:
+    if school_id and school_id not in school_display:
+        school_display[school_id] = f"Unknown School ({school_id})"
 schools = load_schools()  # Keep for backward compatibility
 
 # Ensure we have a school_id column (set to None if missing)
@@ -127,27 +131,16 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
             teacher_station = teacher['station_uuid']
             school_station = selected_school['station_uuid']
             
-            # Debug: Print station information
-            debug_info = f"""
-            === DEBUG INFO ===
-            Teacher: {teacher['name']}
-            Teacher Station UUID: {teacher_station}
-            School: {selected_school['name']}
-            School Station UUID: {school_station}
-            """
-            print(debug_info)
-            
             try:
                 travel_time = get_travel_time(
                     teacher_station,
                     school_station,
                     travel_times_df
                 )
-                print(f"Travel time: {travel_time}")
+                
                 is_within_range = travel_time <= 60
             except Exception as e:
                 error_msg = f"Error calculating travel time: {e}"
-                print(error_msg)
                 st.warning(error_msg)
                 is_within_range = False
         
@@ -160,8 +153,6 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
         elif is_within_range:
             color = 'green'  # Within 60 minutes of selected school
         
-        print(f"Color for {teacher['name']}: {color}")
-
         # Add popup with teacher info and travel time if applicable
         popup_text = f"{teacher['name']} ({teacher['type']})\nStation: {teacher['station']}"
         if selected_school is not None and 'station' in selected_school:
@@ -563,15 +554,32 @@ if 'filtered_teachers' not in st.session_state:
 if 'temp_assignments' not in st.session_state:
     st.session_state.temp_assignments = teachers_df[['id', 'school_id']].set_index('id')['school_id'].to_dict()
 
+def on_school_change(teacher_id, selectbox_key):
+    """Handle school selection change"""
+    if selectbox_key in st.session_state:
+        selected_school = st.session_state[selectbox_key]
+        st.session_state.temp_assignments[teacher_id] = selected_school if selected_school else None
+        # Update the filtered_teachers dataframe if it exists
+        if 'filtered_teachers' in st.session_state:
+            mask = st.session_state.filtered_teachers['id'] == teacher_id
+            if mask.any():
+                st.session_state.filtered_teachers.loc[mask, 'school_id'] = selected_school if selected_school else None
+        st.rerun()
+
 # Function to update a teacher's school assignment
-def update_teacher_school(teacher_id, school_id):
+def update_teacher_school(teacher_id, selectbox_key):
     """Update a teacher's school assignment in the temporary storage"""
-    st.session_state.temp_assignments[teacher_id] = school_id if school_id else None
+    # Get the selected school from the selectbox
+    selected_school = st.session_state[selectbox_key] if selectbox_key in st.session_state else None
     
-    # Also update the filtered_teachers dataframe
-    mask = st.session_state.filtered_teachers['id'] == teacher_id
-    if mask.any():
-        st.session_state.filtered_teachers.loc[mask, 'school_id'] = school_id if school_id else None
+    # Update temp_assignments
+    st.session_state.temp_assignments[teacher_id] = selected_school if selected_school else None
+    
+    # Update the filtered_teachers dataframe if it exists
+    if 'filtered_teachers' in st.session_state:
+        mask = st.session_state.filtered_teachers['id'] == teacher_id
+        if mask.any():
+            st.session_state.filtered_teachers.loc[mask, 'school_id'] = selected_school if selected_school else None
 
 # Always apply filters to ensure the display is up to date
 filtered = teachers_df.copy()
@@ -638,18 +646,24 @@ for i in range(0, total_teachers, cols_per_row):
                 
                 # School selection
                 teacher_id = teacher['id']
-                current_school = st.session_state.temp_assignments.get(teacher_id, '')
-                
-                # Create a callback to handle school selection changes
-                def on_school_change(teacher_id=teacher_id):
-                    new_school = st.session_state[f'school_{teacher_id}']
-                    update_teacher_school(teacher_id, new_school)
-                
-                # Create the dropdown with the current assignment
+                current_school = st.session_state.temp_assignments.get(teacher_id, teacher.get('school_id', ''))
+
+                # Ensure current_school is a string and handle NaN/None values
+                current_school = str(current_school) if pd.notna(current_school) and str(current_school).strip() != 'nan' else ''
+
+                # Find the index of current school in options
                 school_index = 0  # Default to "No School"
                 if current_school and current_school in school_options:
                     school_index = school_options.index(current_school)
-                
+                else:
+                    # If school_id exists in assignments but not in options, add it
+                    if current_school and current_school not in school_display:
+                        school_display[current_school] = f"Unknown School ({current_school})"
+                        if current_school not in school_options:
+                            school_options.append(current_school)
+                            school_index = school_options.index(current_school)
+
+                # Create the dropdown
                 st.selectbox(
                     "Assign to school",
                     school_options,
@@ -658,7 +672,7 @@ for i in range(0, total_teachers, cols_per_row):
                     format_func=lambda x: school_display.get(x, "No School") if x else "No School",
                     label_visibility="collapsed",
                     on_change=on_school_change,
-                    args=(teacher_id,)
+                    args=(teacher_id, f"school_{teacher_id}")
                 )
                 
                 # Move preference checkbox
@@ -782,7 +796,16 @@ balance = display_utils.check_school_balance(current_assignments, filtered_teach
 balance_summary = display_utils.get_school_balance_summary(balance)
 
 # Calculate basic metrics
-unassigned_teacher_ids = [tid for tid, sid in st.session_state.temp_assignments.items() if not sid]
+unassigned_teacher_ids = []
+for teacher_id in teachers_df['id']:
+    # Check temp_assignments first, then fall back to the teacher's school_id
+    if teacher_id in st.session_state.temp_assignments:
+        if not st.session_state.temp_assignments[teacher_id]:
+            unassigned_teacher_ids.append(teacher_id)
+    elif pd.isna(teachers_df.loc[teachers_df['id'] == teacher_id, 'school_id'].iloc[0]) or \
+         teachers_df.loc[teachers_df['id'] == teacher_id, 'school_id'].iloc[0] == '':
+        unassigned_teacher_ids.append(teacher_id)
+
 unassigned_count = len(unassigned_teacher_ids)
 total_teachers = len(teachers_df)
 unassigned_pct = (unassigned_count / total_teachers * 100) if total_teachers > 0 else 0
@@ -855,6 +878,32 @@ with st.expander("View Detailed School Balance"):
         st.dataframe(display_balance, use_container_width=True)
     else:
         st.info("No school balance data available.")
+
+if st.checkbox("Show debug info"):
+    st.write("### 🐞 Debug Information")
+    st.write("#### Unassigned Teachers")
+    st.write(unassigned_teacher_ids)
+    st.write(f"Count: {len(unassigned_teacher_ids)}")
+    
+    st.write("#### Temporary Assignments")
+    st.write(st.session_state.temp_assignments)
+    
+    st.write("#### School Options")
+    st.write(school_options)
+    
+    st.write("#### School Display Mapping")
+    st.write(school_display)
+    
+    # Add additional debug info if needed
+    st.write("#### Teachers DataFrame")
+    st.dataframe(teachers_df[['id', 'name', 'school_id', 'move']].head())
+    
+    st.write("#### Filtered Teachers")
+    if 'filtered_teachers' in st.session_state:
+        st.dataframe(st.session_state.filtered_teachers[['id', 'name', 'school_id', 'move']].head())
+    else:
+        st.write("No filtered teachers in session state")
+
 
 # Display current data
 expander = st.expander("View Raw Data")
