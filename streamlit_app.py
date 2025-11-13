@@ -270,40 +270,55 @@ st.markdown(css_app.get_custom_css(), unsafe_allow_html=True)
 
 # Show school details and assigned teachers
 if selected_school_id:
-    # Get detailed school information
+    # Create a container for school details that we can update
+    school_details_container = st.sidebar.container()
+    
+    # Get the most up-to-date teacher data including pending changes
+    current_teachers = teachers_df.copy()
+    for tid, sid in st.session_state.temp_assignments.items():
+        mask = current_teachers['id'] == tid
+        if mask.any():
+            current_teachers.loc[mask, 'school_id'] = sid if sid else None
+    
+    # Get detailed school information with the latest data
     school_details = display_utils.get_school_details(
         selected_school_id,
-        teachers_df,
+        current_teachers,  # Use the updated teachers data
         schools_df,
         travel_times_df
     )
     
-    if school_details:
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("School Details")
-        
-        # School name and station
-        st.sidebar.markdown(f"**{school_details['name']}**")
-        st.sidebar.caption(f"🚉 {school_details['station']}")
-        
-        # Student count
-        st.sidebar.markdown("---")
-        st.sidebar.metric("👥 Students", f"{school_details['student_count']:,}")
-        
-        # Teacher count and gender ratio
-        st.sidebar.metric("👨‍🏫 Teachers", 
-                         f"{school_details['teacher_count']}",
-                         f"{school_details['gender_ratio']} (♂:♀)")
-        
-        # Travel time statistics
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("**Travel Times**")
-        st.sidebar.metric("🚆 Total Travel Time", 
-                         f"{school_details['total_travel_time']:,.1f} min")
-        
-        # Assigned teachers list
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("Assigned Teachers")
+    with school_details_container:
+        if school_details:
+            st.markdown("---")
+            st.subheader("School Details")
+            
+            # School name and station
+            st.markdown(f"**{school_details['name']}**")
+            st.caption(f"🚉 {school_details['station']}")
+            
+            # Student count
+            st.markdown("---")
+            st.metric("👥 Students", f"{school_details['student_count']:,}")
+            
+            # Teacher count and gender ratio
+            st.metric("👨‍🏫 Teachers", 
+                     f"{school_details['teacher_count']}",
+                     f"{school_details['gender_ratio']} (♂:♀)")
+            
+            # Travel time statistics
+            st.markdown("---")
+            st.markdown("**Travel Times**")
+            st.metric("🚆 Total Travel Time", 
+                     f"{school_details['total_travel_time']:,.1f} min")
+            
+            # Add a refresh button to force update the display
+            if st.button("↻ Refresh School Details"):
+                st.rerun()
+            
+            # Assigned teachers list
+            st.markdown("---")
+            st.subheader("Assigned Teachers")
         
         # Get filtered teachers assigned to this school
         school_teachers = st.session_state.filtered_teachers[
@@ -674,10 +689,20 @@ for i in range(0, total_teachers, cols_per_row):
                         key=f"disabled_move_{teacher_id}"
                     )
                 
-                # Status indicator with color coding
+                # Status indicator with color coding - check the latest state
                 status_container = st.container()
                 with status_container:
-                    if move or can_move:
+                    # Get the most current school assignment
+                    current_school = st.session_state.temp_assignments.get(teacher_id, teacher.get('school_id', ''))
+                    can_move_now = not current_school or current_school == ''
+                    
+                    # Get the most current move status
+                    current_move = teacher.get('move', True)
+                    if f"move_{teacher_id}" in st.session_state:
+                        current_move = st.session_state[f"move_{teacher_id}"]
+                    
+                    # Determine status
+                    if can_move_now or current_move:
                         st.info("Assignable", icon="📅")
                     else:
                         st.success("Stable", icon="✅")
