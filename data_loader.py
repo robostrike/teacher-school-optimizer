@@ -29,49 +29,44 @@ def load_teachers() -> pd.DataFrame:
         '': True
     }).astype(bool)
     
-    # Initialize school_id column if it doesn't exist
-    df['school_id'] = df.get('school_id', '')
+    # Ensure school_id is properly initialized and clean
+    if 'school_id' not in df.columns:
+        df['school_id'] = ''
+    df['school_id'] = df['school_id'].fillna('').astype(str)
     
     # Load current assignments
     if os.path.exists(ASSIGNMENTS_FILE):
         try:
             assignments = load_assignments()
             if not assignments.empty:
+                # Get only current assignments
                 current_assignments = get_current_assignments(assignments)
                 
-                # Print debug info
-                print("Teachers columns:", df.columns.tolist())
-                print("Current assignments columns:", current_assignments.columns.tolist())
-                print("Teacher IDs in assignments:", current_assignments['teacher_id'].tolist())
-                
                 # Ensure teacher_id is string type in both dataframes
-                df['id'] = df['id'].astype(str)
-                current_assignments['teacher_id'] = current_assignments['teacher_id'].astype(str)
+                df['id'] = df['id'].astype(str).str.strip()
+                current_assignments['teacher_id'] = current_assignments['teacher_id'].astype(str).str.strip()
                 
-                # Merge with teachers to get school assignments
-                df = pd.merge(
-                    df,
-                    current_assignments[['teacher_id', 'school_id']],
-                    left_on='id',
-                    right_on='teacher_id',
-                    how='left',
-                    suffixes=('', '_new')
-                )
+                # Create a mapping of teacher_id to school_id from current assignments
+                assignment_map = current_assignments.set_index('teacher_id')['school_id'].to_dict()
                 
-                # Update school_id from the merge result
-                if 'school_id_new' in df.columns:
-                    df['school_id'] = df['school_id_new'].fillna(df['school_id'])
-                    df = df.drop(columns=['school_id_new', 'teacher_id'], errors='ignore')
+                # Update school_id from assignments, only for teachers who have current assignments
+                df['assigned_school'] = df['id'].map(assignment_map)
+                df['school_id'] = df['assigned_school'].fillna(df['school_id'])
+                df = df.drop(columns=['assigned_school'], errors='ignore')
                 
-                print("After merge, school_id values:", df['school_id'].unique())
+                # Debug info
+                print(f"Updated {len(current_assignments)} teacher assignments")
+                print(f"Teachers with assignments: {df[df['school_id'] != ''].shape[0]}")
+                
         except Exception as e:
             print(f"Error processing assignments: {str(e)}")
     
-    # Ensure school_id is string and handle NaN/None values
+    # Ensure school_id is clean and handle NaN/None values
     df['school_id'] = df['school_id'].fillna('').astype(str)
     
-    # Update move status for unassigned teachers
-    df.loc[df['school_id'] == '', 'move'] = True
+    # Update move status: if teacher has no school, they should be movable
+    # If they have a school but move=False, they are stable
+    df['move'] = df['school_id'] == ''
     
     return df
 
@@ -87,15 +82,42 @@ def save_assignments(assignments_df: pd.DataFrame) -> None:
     assignments_df.to_csv(ASSIGNMENTS_FILE, index=False)
 
 def get_current_assignments(assignments_df: pd.DataFrame) -> pd.DataFrame:
-    """Get current assignments (where is_current is True)"""
-    return assignments_df[assignments_df['is_current'] == True]
+    """
+    Get the most recent current assignment for each teacher.
+    If multiple current assignments exist for a teacher, keep the most recent one.
+    """
+    if assignments_df.empty:
+        return pd.DataFrame()
+        
+    # Ensure we have the required columns
+    required_columns = ['teacher_id', 'school_id', 'assigned_date', 'is_current']
+    if not all(col in assignments_df.columns for col in required_columns):
+        return pd.DataFrame()
+    
+    # Convert assigned_date to datetime for proper sorting
+    assignments_df = assignments_df.copy()
+    assignments_df['assigned_date'] = pd.to_datetime(assignments_df['assigned_date'])
+    
+    # Get only current assignments
+    current = assignments_df[assignments_df['is_current'] == True].copy()
+    
+    if current.empty:
+        return pd.DataFrame()
+    
+    # Sort by assigned_date in descending order to get the most recent first
+    current = current.sort_values('assigned_date', ascending=False)
+    
+    # Keep only the most recent assignment per teacher
+    current = current.drop_duplicates('teacher_id', keep='first')
+    
+    return current
 
 def assign_teacher_to_school(teacher_id: str, school_id: str, assignments_df: pd.DataFrame) -> pd.DataFrame:
     """
     Assign a teacher to a school, updating previous assignments if needed
     
     Args:
-        teacher_id: ID of the teacher
+        teacher_id: ID of the teacher (string)
         school_id: ID of the school to assign (empty string to unassign)
         assignments_df: DataFrame containing all assignments
         
@@ -104,18 +126,42 @@ def assign_teacher_to_school(teacher_id: str, school_id: str, assignments_df: pd
     """
     from datetime import datetime
     
+    # Ensure teacher_id is string and stripped of whitespace
+    teacher_id = str(teacher_id).strip()
+    
+    # Create a copy to avoid SettingWithCopyWarning
+    assignments_df = assignments_df.copy()
+    
     # Mark any existing current assignments as not current
-    mask = (assignments_df['teacher_id'] == teacher_id) & (assignments_df['is_current'] == True)
-    assignments_df.loc[mask, 'is_current'] = False
+    mask = (assignments_df['teacher_id'].astype(str).str.strip() == teacher_id) & \
+           (assignments_df['is_current'] == True)
+           
+    if mask.any():
+        # Only update if there are current assignments to update
+        assignments_df.loc[mask, 'is_current'] = False
+        assignments_df.loc[mask, 'unassigned_date'] = datetime.now()
     
     # Add new assignment if school_id is not empty
-    if pd.notna(school_id) and school_id != '':
+    if pd.notna(school_id) and str(school_id).strip() != '':
+        school_id = str(school_id).strip()
         new_assignment = pd.DataFrame([{
             'teacher_id': teacher_id,
             'school_id': school_id,
-            'assigned_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'is_current': True
+            'assigned_date': datetime.now(),
+            'is_current': True,
+            'assigned_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }])
+        
+        # Ensure all required columns exist in the DataFrame
+        for col in ['unassigned_date']:
+            if col not in assignments_df.columns:
+                assignments_df[col] = None
+        
+        # Ensure new assignment has all columns from the original DataFrame
+        for col in assignments_df.columns:
+            if col not in new_assignment.columns:
+                new_assignment[col] = None
+        
         assignments_df = pd.concat([assignments_df, new_assignment], ignore_index=True)
     
     return assignments_df
