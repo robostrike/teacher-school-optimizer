@@ -30,37 +30,48 @@ def load_teachers() -> pd.DataFrame:
     }).astype(bool)
     
     # Initialize school_id column if it doesn't exist
-    if 'school_id' not in df.columns:
-        df['school_id'] = ''
+    df['school_id'] = df.get('school_id', '')
     
     # Load current assignments
     if os.path.exists(ASSIGNMENTS_FILE):
-        assignments = load_assignments()
-        current_assignments = get_current_assignments(assignments)
-        
-        # Merge with teachers to get school assignments
-        df = pd.merge(
-            df,
-            current_assignments[['teacher_id', 'school_id']],
-            left_on='id',
-            right_on='teacher_id',
-            how='left',
-            suffixes=('', '_assignment')
-        )
-        
-        # Clean up columns
-        drop_cols = ['teacher_id']
-        if 'school_id' in df.columns and 'school_id_assignment' in df.columns:
-            drop_cols.append('school_id')
-            df.rename(columns={'school_id_assignment': 'school_id'}, inplace=True)
-        
-        df.drop(columns=drop_cols, inplace=True, errors='ignore')
-        
-        # Ensure school_id is string and handle NaN values
-        df['school_id'] = df['school_id'].fillna('').astype(str)
-        
-        # Update move status for unassigned teachers
-        df.loc[df['school_id'] == '', 'move'] = True
+        try:
+            assignments = load_assignments()
+            if not assignments.empty:
+                current_assignments = get_current_assignments(assignments)
+                
+                # Print debug info
+                print("Teachers columns:", df.columns.tolist())
+                print("Current assignments columns:", current_assignments.columns.tolist())
+                print("Teacher IDs in assignments:", current_assignments['teacher_id'].tolist())
+                
+                # Ensure teacher_id is string type in both dataframes
+                df['id'] = df['id'].astype(str)
+                current_assignments['teacher_id'] = current_assignments['teacher_id'].astype(str)
+                
+                # Merge with teachers to get school assignments
+                df = pd.merge(
+                    df,
+                    current_assignments[['teacher_id', 'school_id']],
+                    left_on='id',
+                    right_on='teacher_id',
+                    how='left',
+                    suffixes=('', '_new')
+                )
+                
+                # Update school_id from the merge result
+                if 'school_id_new' in df.columns:
+                    df['school_id'] = df['school_id_new'].fillna(df['school_id'])
+                    df = df.drop(columns=['school_id_new', 'teacher_id'], errors='ignore')
+                
+                print("After merge, school_id values:", df['school_id'].unique())
+        except Exception as e:
+            print(f"Error processing assignments: {str(e)}")
+    
+    # Ensure school_id is string and handle NaN/None values
+    df['school_id'] = df['school_id'].fillna('').astype(str)
+    
+    # Update move status for unassigned teachers
+    df.loc[df['school_id'] == '', 'move'] = True
     
     return df
 
