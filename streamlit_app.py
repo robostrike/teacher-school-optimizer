@@ -223,16 +223,39 @@ st.sidebar.subheader("Filter by School")
 # Get current assignments
 current_assignments = get_current_assignments(load_assignments())
 
-# Count teachers per school
-school_teacher_counts = current_assignments['school_id'].value_counts().to_dict()
+def get_current_teacher_counts():
+    """Get current teacher counts including pending changes"""
+    # Start with current assignments
+    counts = current_assignments['school_id'].value_counts().to_dict()
+    
+    # Update with pending changes
+    for teacher_id, school_id in st.session_state.temp_assignments.items():
+        # Remove from old school if teacher was assigned
+        old_school = current_assignments[
+            (current_assignments['teacher_id'] == teacher_id) & 
+            (current_assignments['is_current'] == True)
+        ]
+        if not old_school.empty and old_school['school_id'].iloc[0] in counts:
+            counts[old_school['school_id'].iloc[0]] -= 1
+            if counts[old_school['school_id'].iloc[0]] == 0:
+                del counts[old_school['school_id'].iloc[0]]
+        
+        # Add to new school if there is one
+        if school_id:
+            counts[school_id] = counts.get(school_id, 0) + 1
+    
+    return counts
 
 # Format school names with teacher counts
 def format_school_option(school_id):
     if not school_id:
         return "All Schools"
+    
+    # Get current counts including pending changes
+    current_counts = get_current_teacher_counts()
+    count = current_counts.get(school_id, 0)
     school_name = schools_df[schools_df['id'] == school_id]['name'].iloc[0]
-    teacher_count = school_teacher_counts.get(school_id, 0)
-    return f"{school_name} ({teacher_count} teachers)"
+    return f"{school_name} ({count} teachers)"
 
 # Create school options with teacher counts
 school_options = [""] + sorted(schools_df['id'].tolist())
@@ -619,22 +642,43 @@ for i in range(0, total_teachers, cols_per_row):
                 )
                 
                 # Move preference checkbox
-                move = st.checkbox(
-                    "Willing to Move",
-                    value=teacher.get('move', False),
-                    disabled=can_move,
-                    key=f"move_{teacher_id}",
-                    help="Check if teacher is willing to move to a different school"
-                )
-                teachers_df.loc[teacher_mask, 'move'] = move
+                # If no school is selected, force move=True and disable the checkbox
+                if not current_school:
+                    move = True
+                    move_disabled = True
+                    # Update the move status in the teachers_df and filtered_teachers
+                    teachers_df.loc[teacher_mask, 'move'] = True
+                    if teacher_id in st.session_state.temp_assignments:
+                        st.session_state.filtered_teachers.loc[teacher_mask, 'move'] = True
+                else:
+                    # Enable checkbox if teacher has a school assignment
+                    move_disabled = False
+                    move = st.checkbox(
+                        "Willing to Move",
+                        value=teacher.get('move', True),  # Default to True if not set
+                        disabled=move_disabled,
+                        key=f"move_{teacher_id}",
+                        help="Check if teacher is willing to move to a different school"
+                    )
+                    # Update the move status in the teachers_df and filtered_teachers
+                    teachers_df.loc[teacher_mask, 'move'] = move
+                    if teacher_id in st.session_state.temp_assignments:
+                        st.session_state.filtered_teachers.loc[teacher_mask, 'move'] = move
+                
+                # Always show the checkbox, but it might be disabled
+                if not current_school:
+                    st.checkbox(
+                        "Willing to Move",
+                        value=True,
+                        disabled=True,
+                        key=f"disabled_move_{teacher_id}"
+                    )
                 
                 # Status indicator with color coding
                 status_container = st.container()
                 with status_container:
-                    if can_move:
-                        st.info("Reassignable", icon="ℹ️")
-                    elif move:
-                        st.warning("Open", icon="🔄")
+                    if move or can_move:
+                        st.info("Assignable", icon="📅")
                     else:
                         st.success("Stable", icon="✅")
 
