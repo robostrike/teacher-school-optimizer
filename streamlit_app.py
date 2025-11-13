@@ -217,6 +217,10 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
 # School data and teacher locations are already loaded above
 travel_times_df = load_travel_times()
 
+# Initialize session state for temporary assignments
+if 'temp_assignments' not in st.session_state:
+    st.session_state.temp_assignments = {}
+
 # School selection for filtering
 st.sidebar.subheader("Filter by School")
 
@@ -228,21 +232,22 @@ def get_current_teacher_counts():
     # Start with current assignments
     counts = current_assignments['school_id'].value_counts().to_dict()
     
-    # Update with pending changes
-    for teacher_id, school_id in st.session_state.temp_assignments.items():
-        # Remove from old school if teacher was assigned
-        old_school = current_assignments[
-            (current_assignments['teacher_id'] == teacher_id) & 
-            (current_assignments['is_current'] == True)
-        ]
-        if not old_school.empty and old_school['school_id'].iloc[0] in counts:
-            counts[old_school['school_id'].iloc[0]] -= 1
-            if counts[old_school['school_id'].iloc[0]] == 0:
-                del counts[old_school['school_id'].iloc[0]]
-        
-        # Add to new school if there is one
-        if school_id:
-            counts[school_id] = counts.get(school_id, 0) + 1
+    # Update with pending changes if they exist
+    if hasattr(st.session_state, 'temp_assignments') and st.session_state.temp_assignments:
+        for teacher_id, school_id in st.session_state.temp_assignments.items():
+            # Remove from old school if teacher was assigned
+            old_school = current_assignments[
+                (current_assignments['teacher_id'] == teacher_id) & 
+                (current_assignments['is_current'] == True)
+            ]
+            if not old_school.empty and old_school['school_id'].iloc[0] in counts:
+                counts[old_school['school_id'].iloc[0]] -= 1
+                if counts[old_school['school_id'].iloc[0]] == 0:
+                    del counts[old_school['school_id'].iloc[0]]
+            
+            # Add to new school if there is one
+            if school_id:
+                counts[school_id] = counts.get(school_id, 0) + 1
     
     return counts
 
