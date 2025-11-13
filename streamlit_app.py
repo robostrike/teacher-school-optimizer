@@ -217,10 +217,6 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
 # School data and teacher locations are already loaded above
 travel_times_df = load_travel_times()
 
-# Initialize session state for temporary assignments
-if 'temp_assignments' not in st.session_state:
-    st.session_state.temp_assignments = {}
-
 # School selection for filtering
 st.sidebar.subheader("Filter by School")
 
@@ -232,22 +228,21 @@ def get_current_teacher_counts():
     # Start with current assignments
     counts = current_assignments['school_id'].value_counts().to_dict()
     
-    # Update with pending changes if they exist
-    if hasattr(st.session_state, 'temp_assignments') and st.session_state.temp_assignments:
-        for teacher_id, school_id in st.session_state.temp_assignments.items():
-            # Remove from old school if teacher was assigned
-            old_school = current_assignments[
-                (current_assignments['teacher_id'] == teacher_id) & 
-                (current_assignments['is_current'] == True)
-            ]
-            if not old_school.empty and old_school['school_id'].iloc[0] in counts:
-                counts[old_school['school_id'].iloc[0]] -= 1
-                if counts[old_school['school_id'].iloc[0]] == 0:
-                    del counts[old_school['school_id'].iloc[0]]
-            
-            # Add to new school if there is one
-            if school_id:
-                counts[school_id] = counts.get(school_id, 0) + 1
+    # Update with pending changes
+    for teacher_id, school_id in st.session_state.temp_assignments.items():
+        # Remove from old school if teacher was assigned
+        old_school = current_assignments[
+            (current_assignments['teacher_id'] == teacher_id) & 
+            (current_assignments['is_current'] == True)
+        ]
+        if not old_school.empty and old_school['school_id'].iloc[0] in counts:
+            counts[old_school['school_id'].iloc[0]] -= 1
+            if counts[old_school['school_id'].iloc[0]] == 0:
+                del counts[old_school['school_id'].iloc[0]]
+        
+        # Add to new school if there is one
+        if school_id:
+            counts[school_id] = counts.get(school_id, 0) + 1
     
     return counts
 
@@ -262,31 +257,11 @@ def format_school_option(school_id):
     school_name = schools_df[schools_df['id'] == school_id]['name'].iloc[0]
     return f"{school_name} ({count} teachers)"
 
-def get_school_display_maps(teachers_df, schools_df):
-    """Get school options and display names, including unassigned teachers"""
-    # Get current assignments
-    school_display = schools_df.set_index('id')['name'].to_dict()
-    school_display[None] = "No School"
-    school_display[''] = "No School"
-    
-    # Get all school options
-    school_options = [""]  # No School option
-    school_options.extend(sorted(schools_df['id'].tolist()))
-    
-    return school_options, school_display
-
-# Initialize school options and display maps
-school_options, school_display = get_school_display_maps(teachers_df, schools_df)
-
-# Store in session state if not already present
-if 'school_options' not in st.session_state:
-    st.session_state.school_options = school_options
-    st.session_state.school_display = school_display
-
 # Create school options with teacher counts
+school_options = [""] + sorted(schools_df['id'].tolist())
 selected_school_id = st.sidebar.selectbox(
     "Select a school...",
-    st.session_state.school_options,
+    school_options,
     format_func=format_school_option
 )
 
@@ -346,10 +321,10 @@ if selected_school_id:
             st.subheader("Assigned Teachers")
         
         # Get filtered teachers assigned to this school
-        school_teachers = st.session_state.get('filtered_teachers', teachers_df)[
-            (st.session_state.get('filtered_teachers', teachers_df)['school_id'] == selected_school_id) &
-            (st.session_state.get('filtered_teachers', teachers_df)['school_id'].notna()) &
-            (st.session_state.get('filtered_teachers', teachers_df)['school_id'] != '')
+        school_teachers = st.session_state.filtered_teachers[
+            (st.session_state.filtered_teachers['school_id'] == selected_school_id) &
+            (st.session_state.filtered_teachers['school_id'].notna()) &
+            (st.session_state.filtered_teachers['school_id'] != '')
         ].copy()
         
         if not school_teachers.empty:
@@ -541,14 +516,6 @@ st.subheader("Teacher Directory")
 # Create a 3-column layout for filters
 search_col, type_col, gender_col = st.columns([2, 1, 1])
 
-# School filter
-school_filter_col = st.selectbox(
-    "Filter by School",
-    options=["All"] + sorted(schools_df['name'].tolist()) + [""],
-    format_func=lambda x: "No School" if x == "" else x,
-    key="school_filter"
-)
-
 # Search bar in the first column
 with search_col:
     search_term = st.text_input(
@@ -581,7 +548,6 @@ with gender_col:
 if st.button("Clear All Filters"):
     st.session_state.teacher_type_filter = "All"
     st.session_state.gender_filter = "All"
-    st.session_state.school_filter = "All"
     st.rerun()
 
 # Initialize session state variables
@@ -601,14 +567,6 @@ def update_teacher_school(teacher_id, school_id):
     mask = st.session_state.filtered_teachers['id'] == teacher_id
     if mask.any():
         st.session_state.filtered_teachers.loc[mask, 'school_id'] = school_id if school_id else None
-    
-    # Refresh the school options to reflect changes
-    st.session_state.school_options, st.session_state.school_display = get_school_display_maps(
-        teachers_df, schools_df
-    )
-    
-    # Force a rerun to update the UI
-    st.rerun()
 
 # Always apply filters to ensure the display is up to date
 filtered = teachers_df.copy()
@@ -631,15 +589,6 @@ if teacher_type != "All":
 # Apply gender filter
 if gender != "All":
     filtered = filtered[filtered['gender'] == gender].copy()
-
-# Apply school filter - handle 'No School' case properly
-if 'school_filter' in st.session_state and st.session_state.school_filter:
-    if st.session_state.school_filter == "":  # This is the 'No School' case
-        filtered = filtered[(filtered['school_id'].isna()) | (filtered['school_id'] == '')].copy()
-    elif st.session_state.school_filter != "All":
-        # Get the school ID from the name
-        school_id = schools_df[schools_df['name'] == st.session_state.school_filter]['id'].iloc[0]
-        filtered = filtered[filtered['school_id'] == school_id].copy()
 
 # Update session state with filtered results
 filtered_teachers = filtered.reset_index(drop=True)
@@ -693,18 +642,15 @@ for i in range(0, total_teachers, cols_per_row):
                 
                 # Create the dropdown with the current assignment
                 school_index = 0  # Default to "No School"
-                current_options = st.session_state.get('school_options', school_options)
-                current_display = st.session_state.get('school_display', school_display)
-                
-                if current_school and current_school in current_options:
-                    school_index = current_options.index(current_school)
+                if current_school and current_school in school_options:
+                    school_index = school_options.index(current_school)
                 
                 st.selectbox(
                     "Assign to school",
-                    current_options,
+                    school_options,
                     index=school_index,
                     key=f"school_{teacher_id}",
-                    format_func=lambda x: current_display.get(x, "No School") if x else "No School",
+                    format_func=lambda x: school_display.get(x, "No School") if x else "No School",
                     label_visibility="collapsed",
                     on_change=on_school_change,
                     args=(teacher_id,)
