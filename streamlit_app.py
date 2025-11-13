@@ -281,12 +281,15 @@ if selected_school_id:
         # Assigned teachers list
         st.sidebar.markdown("---")
         st.sidebar.subheader("Assigned Teachers")
-        assigned_teachers = current_assignments[current_assignments['school_id'] == selected_school_id]
         
-        if not assigned_teachers.empty:
-            # Get teacher details for the assigned teachers
-            school_teachers = teachers_df[teachers_df['id'].isin(assigned_teachers['teacher_id'])].copy()
-            
+        # Get filtered teachers assigned to this school
+        school_teachers = st.session_state.filtered_teachers[
+            (st.session_state.filtered_teachers['school_id'] == selected_school_id) &
+            (st.session_state.filtered_teachers['school_id'].notna()) &
+            (st.session_state.filtered_teachers['school_id'] != '')
+        ].copy()
+        
+        if not school_teachers.empty:
             # Add travel time to school for each teacher
             if 'station_id' in school_teachers.columns:
                 school_station = schools_df[schools_df['id'] == selected_school_id]['station_uuid'].iloc[0]
@@ -509,9 +512,23 @@ if st.button("Clear All Filters"):
     st.session_state.gender_filter = "All"
     st.rerun()
 
-# Initialize filtered_teachers in session state if it doesn't exist
+# Initialize session state variables
 if 'filtered_teachers' not in st.session_state:
     st.session_state.filtered_teachers = teachers_df.copy()
+
+# Initialize temporary storage for teacher-school assignments
+if 'temp_assignments' not in st.session_state:
+    st.session_state.temp_assignments = teachers_df[['id', 'school_id']].set_index('id')['school_id'].to_dict()
+
+# Function to update a teacher's school assignment
+def update_teacher_school(teacher_id, school_id):
+    """Update a teacher's school assignment in the temporary storage"""
+    st.session_state.temp_assignments[teacher_id] = school_id if school_id else None
+    
+    # Also update the filtered_teachers dataframe
+    mask = st.session_state.filtered_teachers['id'] == teacher_id
+    if mask.any():
+        st.session_state.filtered_teachers.loc[mask, 'school_id'] = school_id if school_id else None
 
 # Always apply filters to ensure the display is up to date
 filtered = teachers_df.copy()
@@ -577,36 +594,29 @@ for i in range(0, total_teachers, cols_per_row):
                 st.caption(f"{teacher['type']} | {teacher['station']}")
                 
                 # School selection
-                current_school_idx = school_options.index(current_school) if pd.notna(current_school) and current_school in school_options else 0
+                teacher_id = teacher['id']
+                current_school = st.session_state.temp_assignments.get(teacher_id, '')
                 
-                # School selection dropdown
-                new_school = st.selectbox(
-                    " ",  # Empty space for label (required by Streamlit)
-                    options=school_options,
-                    index=current_school_idx,
+                # Create a callback to handle school selection changes
+                def on_school_change(teacher_id=teacher_id):
+                    new_school = st.session_state[f'school_{teacher_id}']
+                    update_teacher_school(teacher_id, new_school)
+                
+                # Create the dropdown with the current assignment
+                school_index = 0  # Default to "No School"
+                if current_school and current_school in school_options:
+                    school_index = school_options.index(current_school)
+                
+                st.selectbox(
+                    "Assign to school",
+                    school_options,
+                    index=school_index,
                     key=f"school_{teacher_id}",
-                    format_func=lambda x: school_display.get(x, "No School"),
-                    label_visibility="collapsed"
+                    format_func=lambda x: school_display.get(x, "No School") if x else "No School",
+                    label_visibility="collapsed",
+                    on_change=on_school_change,
+                    args=(teacher_id,)
                 )
-                
-                # Update the teacher's school in both dataframes
-                if new_school != current_school:
-                    # Update teachers_df
-                    teachers_df.loc[teacher_mask, 'school_id'] = new_school if new_school else None
-                    
-                    # Update assignments_df
-                    teacher_id = teacher['id']
-                    # Remove any existing assignments for this teacher
-                    assignments_df = assignments_df[assignments_df['teacher_id'] != teacher_id]
-                    
-                    # If a new school is selected, add the assignment
-                    if new_school and new_school != '':
-                        new_assignment = pd.DataFrame([{
-                            'teacher_id': teacher_id,
-                            'school_id': new_school,
-                            'assigned_at': pd.Timestamp.now()
-                        }])
-                        assignments_df = pd.concat([assignments_df, new_assignment], ignore_index=True)
                 
                 # Move preference checkbox
                 move = st.checkbox(
@@ -630,40 +640,87 @@ for i in range(0, total_teachers, cols_per_row):
 
 # Save button
 if st.button("Save Changes"):
-    # Save teacher data
-    save_teachers(temp_teachers)
+    try:
+        # Update the main teachers_df with all temporary assignments
+        for teacher_id, school_id in st.session_state.temp_assignments.items():
+            mask = teachers_df['id'] == teacher_id
+            if mask.any():
+                teachers_df.loc[mask, 'school_id'] = school_id if school_id else None
+        
+        # Save teacher data
+        save_teachers(teachers_df)
+        
+        # Update assignments
+        for teacher_id, school_id in st.session_state.temp_assignments.items():
+            if school_id:  # Only update if there's a school assignment
+                assignments_df = assign_teacher_to_school(
+                    teacher_id, 
+                    school_id,
+                    assignments_df
+                )
+        
+        # Save assignments
+        save_assignments(assignments_df)
+        
+        # Update the current assignments in session state
+        st.session_state.current_assignments = get_current_assignments(assignments_df)
+        
+        st.success("Changes saved successfully!")
+        st.rerun()
+        
+    except Exception as e:
+        st.error(f"Error saving changes: {str(e)}")
+
+def get_current_assignments_with_pending(assignments_df, temp_assignments):
+    """Get current assignments including pending changes"""
+    # Create a copy of assignments
+    current_assignments = assignments_df.copy()
     
-    # Update assignments
-    for _, teacher in temp_teachers.iterrows():
-        current_school = teacher.get('school_id', '')
-        if pd.notna(current_school) and current_school != '':
-            assignments_df = assign_teacher_to_school(
-                teacher['id'], 
-                current_school,
-                assignments_df
-            )
+    # Update with any pending assignments
+    for teacher_id, school_id in temp_assignments.items():
+        # Remove any existing assignments for this teacher
+        current_assignments = current_assignments[current_assignments['teacher_id'] != teacher_id]
+        
+        # Add the new assignment if there is one
+        if school_id:
+            new_assignment = pd.DataFrame([{
+                'teacher_id': teacher_id,
+                'school_id': school_id,
+                'assigned_at': pd.Timestamp.now(),
+                'is_current': True
+            }])
+            current_assignments = pd.concat([current_assignments, new_assignment], ignore_index=True)
     
-    # Save assignments
-    save_assignments(assignments_df)
-    st.success("Changes saved successfully!")
-    st.rerun()
+    return current_assignments
 
 # Display school statistics
 st.header("School Statistics")
 
+# Get current assignments including pending changes
+current_assignments = get_current_assignments_with_pending(assignments_df, st.session_state.temp_assignments)
+
 # Calculate and display occupancy using filtered teachers
-occupancy = display_utils.display_school_occupancy(assignments_df[assignments_df['teacher_id'].isin(filtered_teachers['id'])], schools_df)
-balance = display_utils.check_school_balance(assignments_df, filtered_teachers)
+occupancy = display_utils.display_school_occupancy(
+    current_assignments[current_assignments['teacher_id'].isin(filtered_teachers['id'])], 
+    schools_df
+)
+balance = display_utils.check_school_balance(current_assignments, filtered_teachers)
 balance_summary = display_utils.get_school_balance_summary(balance)
 
 # Calculate basic metrics
-unassigned_teachers = teachers_df[teachers_df['school_id'].isna() | (teachers_df['school_id'] == '')]
-unassigned_count = len(unassigned_teachers)
+unassigned_teacher_ids = [tid for tid, sid in st.session_state.temp_assignments.items() if not sid]
+unassigned_count = len(unassigned_teacher_ids)
 total_teachers = len(teachers_df)
 unassigned_pct = (unassigned_count / total_teachers * 100) if total_teachers > 0 else 0
 
-# Calculate travel time statistics
-travel_stats = display_utils.calculate_total_travel_time(teachers_df, schools_df, travel_times_df)
+# Calculate travel time statistics with current assignments
+temp_teachers = teachers_df.copy()
+for teacher_id, school_id in st.session_state.temp_assignments.items():
+    mask = temp_teachers['id'] == teacher_id
+    if mask.any():
+        temp_teachers.loc[mask, 'school_id'] = school_id if school_id else None
+
+travel_stats = display_utils.calculate_total_travel_time(temp_teachers, schools_df, travel_times_df)
 
 # Calculate metrics and percentages
 total_schools = len(schools_df)

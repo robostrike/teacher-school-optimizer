@@ -1,8 +1,8 @@
 id,name,gender,type,station,station_id,move,station_lat,station_lon,school_id
-T001,清水 翔,Male,Bilingual,Noborito,a297471a-ee2c-4c83-bda5-16641aeb3d6a,True,35.4743593,139.3997966,
+T001,清水 翔,Male,Bilingual,Noborito,a297471a-ee2c-4c83-bda5-16641aeb3d6a,True,35.4743593,139.3997966,KD1192
 T002,佐藤 結菜,Female,Native,Minami-ōsawa,5b43482a-15cd-4d69-8f6a-ec110733944f,True,35.6141774,139.3800458,
 T003,山本 颯太,Male,Native,Kita-Kōnosu,ec6718fe-14f1-49ac-8608-795d04e7a936,True,35.7396773,139.7612694,
-T004,前田 花子,Female,Native,Kinomiya,c375e664-e17b-46dd-b99c-9b88eb5f5882,True,35.6832291,139.7681325,KD1928
+T004,前田 花子,Female,Native,Kinomiya,c375e664-e17b-46dd-b99c-9b88eb5f5882,False,35.6832291,139.7681325,KD1928
 T005,佐藤 拓哉,Male,Native,Higashi-Fushimi,63ddd88e-bfdf-4232-a16f-0b8099f9da61,False,35.7286904,139.5642362,KD2866
 T006,高橋 結菜,Female,Native,Shin-ochanomizu,d71fc62b-be98-4a44-b584-e1a5dbe44960,True,35.696932,139.7654321,
 T007,岡田 葵,Female,Native,Kobuchi,c8342a91-5b76-4c02-b00f-31a2cd87cc72,False,35.5532338,139.4224569,KD1192
