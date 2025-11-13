@@ -29,6 +29,10 @@ def load_teachers() -> pd.DataFrame:
         '': True
     }).astype(bool)
     
+    # Initialize school_id column if it doesn't exist
+    if 'school_id' not in df.columns:
+        df['school_id'] = ''
+    
     # Load current assignments
     if os.path.exists(ASSIGNMENTS_FILE):
         assignments = load_assignments()
