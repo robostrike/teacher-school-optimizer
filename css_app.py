@@ -49,6 +49,25 @@ def get_custom_css():
         font-size: 0.85rem !important;
     }
     
+    /* Sidebar styles */
+    .st-emotion-cache-1fwbbrh hr {
+        margin: 0.1rem 0 !important;
+        height: 0.5px !important;
+        background-color: #e0e0e0 !important;
+        border: none !important;
+    }
+    
+    /* Reduce spacing around section headers in sidebar */
+    .st-emotion-cache-1fwbbrh h3 {
+        margin: 0.25rem 0 0.5rem 0 !important;
+        font-size: 0.95rem !important;
+    }
+    
+    /* Make sidebar content more compact */
+    .st-emotion-cache-1fwbbrh {
+        gap: 0.5rem !important;
+    }
+    
     /* Reduce padding and height in the selectbox */
     .stSelectbox > div > div {
         padding: 0.15rem 0.75rem 0.15rem 0.5rem !important;

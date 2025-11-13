@@ -8,206 +8,90 @@ from folium import Icon
 from typing import Optional, Tuple
 import display_utils
 import css_app
+from data_loader import (
+    load_teachers, load_assignments, save_assignments, get_current_assignments,
+    assign_teacher_to_school, load_schools, save_teachers, load_schools_with_locations,
+    add_teacher_locations, load_travel_times, get_travel_time, get_school_options
+)
 
 # Set page config
 st.set_page_config(page_title="Teacher Optimizer", layout="wide")
 
-# File paths
-import os
-DATA_DIR = Path(__file__).parent / "data"
-TEACHERS_FILE = DATA_DIR / "teachers.csv"
-SCHOOLS_FILE = DATA_DIR / "kidsduo_schools.csv"
-TRAVEL_TIMES_FILE = DATA_DIR / "station_travel_times.csv"
-ASSIGNMENTS_FILE = DATA_DIR / "teacher_school_assignments.csv"
-
-@st.cache_data
-def load_teachers():
-    """Load teacher data from CSV and merge with assignments"""
-    # Load teachers
-    df = pd.read_csv(TEACHERS_FILE)
-    
-    # Handle 'move' column with proper type conversion
-    if 'move' in df.columns:
-        df['move'] = df['move'].astype(str).str.lower().replace({
-            'true': True,
-            'false': False,
-            'nan': False,
-            '': False
-        }).astype(bool)
-    else:
-        df['move'] = False
-    
-    # Load current assignments
-    if os.path.exists(ASSIGNMENTS_FILE):
-        assignments = pd.read_csv(ASSIGNMENTS_FILE)
-        current_assignments = assignments[assignments['is_current'] == True]
-        
-        # Merge with teachers to get school assignments
-        df = pd.merge(
-            df,
-            current_assignments[['teacher_id', 'school_id']],
-            left_on='id',
-            right_on='teacher_id',
-            how='left'
-        )
-        
-        # Clean up the merged columns
-        df.drop(columns=['teacher_id'], inplace=True, errors='ignore')
-        
-        # Ensure school_id is string and handle NaN values
-        if 'school_id' in df.columns:
-            df['school_id'] = df['school_id'].fillna('').astype(str)
-        else:
-            df['school_id'] = ''
-    
-    return df
-
-@st.cache_data
-def load_assignments():
-    """Load teacher-school assignments from CSV"""
-    if not os.path.exists(ASSIGNMENTS_FILE):
-        return pd.DataFrame(columns=['teacher_id', 'school_id', 'assigned_date', 'is_current'])
-    return pd.read_csv(ASSIGNMENTS_FILE)
-
-def save_assignments(assignments_df):
-    """Save teacher-school assignments to CSV"""
-    assignments_df.to_csv(ASSIGNMENTS_FILE, index=False)
-
-def get_current_assignments(assignments_df):
-    """Get current assignments (where is_current is True)"""
-    return assignments_df[assignments_df['is_current'] == True]
-
-def assign_teacher_to_school(teacher_id, school_id, assignments_df):
-    """Assign a teacher to a school, updating previous assignments if needed"""
-    from datetime import datetime
-    
-    # Mark any existing current assignments as not current
-    mask = (assignments_df['teacher_id'] == teacher_id) & (assignments_df['is_current'] == True)
-    assignments_df.loc[mask, 'is_current'] = False
-    
-    # Add new assignment if school_id is not empty
-    if pd.notna(school_id) and school_id != '':
-        new_assignment = pd.DataFrame([{
-            'teacher_id': teacher_id,
-            'school_id': school_id,
-            'assigned_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'is_current': True
-        }])
-        assignments_df = pd.concat([assignments_df, new_assignment], ignore_index=True)
-    
-    return assignments_df
-
-@st.cache_data
-def load_schools():
-    """Load school data and return as a dictionary of id: name"""
-    df = pd.read_csv(SCHOOLS_FILE)
-    return df.set_index('id')['name'].to_dict()
-
-def save_teachers(teachers_df):
-    """Save teacher data back to CSV"""
-    teachers_df.to_csv(TEACHERS_FILE, index=False)
+# Data loading functions have been moved to data_loader.py
 
 # Load data
 teachers_df = load_teachers()
 assignments_df = load_assignments()
 current_assignments = get_current_assignments(assignments_df)
-schools = load_schools()
+schools_df = load_schools_with_locations()
+travel_times_df = load_travel_times()
 
-# Add a 'No School' option
-school_options = [""] + list(schools.keys())
-school_display = {"": "No School"}
-school_display.update(schools)
+# Get school options for dropdowns
+school_options, school_display = get_school_options(schools_df)
+schools = load_schools()  # Keep for backward compatibility
+
+# Ensure we have a school_id column (set to None if missing)
+if 'school_id' not in teachers_df.columns:
+    teachers_df['school_id'] = None
 
 # Add current school to teachers for backward compatibility
 if not teachers_df.empty and not current_assignments.empty:
+    # First drop any existing school_id column to avoid duplicate column issues
+    if 'school_id' in teachers_df.columns:
+        teachers_df = teachers_df.drop(columns=['school_id'], errors='ignore')
+    
+    # Perform the merge with explicit suffixes
     teachers_df = teachers_df.merge(
         current_assignments[['teacher_id', 'school_id']],
         left_on='id',
         right_on='teacher_id',
-        how='left'
-    ).drop(columns=['teacher_id'])
+        how='left',
+        suffixes=('', '_drop')
+    )
+    
+    # Drop any columns that end with _drop
+    drop_cols = [col for col in teachers_df.columns if col.endswith('_drop')]
+    if drop_cols:
+        teachers_df = teachers_df.drop(columns=drop_cols)
+
+# Ensure teachers without a school have move=True and update assignments
+if 'move' in teachers_df.columns and 'school_id' in teachers_df.columns:
+    # Set move=True for teachers without a school assignment
+    teachers_df.loc[pd.isna(teachers_df['school_id']) | (teachers_df['school_id'] == ''), 'move'] = True
+    
+    # Ensure school_id is properly formatted as string and handle NaN/None
+    teachers_df['school_id'] = teachers_df['school_id'].fillna('')
+    
+    # Ensure move is boolean type
+    teachers_df['move'] = teachers_df['move'].astype(bool)
+    
+    # Update current_assignments to match the teachers_df
+    updated_assignments = teachers_df[['id', 'school_id']].copy()
+    updated_assignments = updated_assignments[updated_assignments['school_id'] != '']
+    updated_assignments = updated_assignments.rename(columns={'id': 'teacher_id'})
+    updated_assignments['assigned_date'] = pd.Timestamp.now()
+    updated_assignments['is_current'] = True
+    
+    # Update the current_assignments in session state
+    if 'current_assignments' not in st.session_state:
+        st.session_state.current_assignments = updated_assignments
+    else:
+        # Keep only the most recent assignment for each teacher
+        st.session_state.current_assignments = pd.concat([
+            st.session_state.current_assignments[~st.session_state.current_assignments['teacher_id'].isin(updated_assignments['teacher_id'])],
+            updated_assignments
+        ])
+    
+    # Clean up the teacher_id column if it was added
+    if 'teacher_id' in teachers_df.columns and 'id' in teachers_df.columns:
+        teachers_df = teachers_df.drop(columns=['teacher_id'])
 else:
     teachers_df['school_id'] = None
 
 # App title
 st.title("Teacher-School Manager")
 
-# Create a map to display teachers and schools
-@st.cache_data
-def load_travel_times():
-    """Load and process travel times data"""
-    try:
-        return pd.read_csv(TRAVEL_TIMES_FILE)
-    except Exception as e:
-        st.error(f"Error loading travel times: {e}")
-        return pd.DataFrame()
-
-def get_travel_time(origin_id, dest_id, travel_times_df):
-    """Get travel time between two stations using their UUIDs"""
-    try:
-        # Debug: Print input parameters
-        print(f"\n=== get_travel_time called ===")
-        print(f"Origin ID: {origin_id} (type: {type(origin_id)})")
-        print(f"Dest ID:   {dest_id} (type: {type(dest_id)})")
-        
-        if travel_times_df is None or travel_times_df.empty:
-            print("Error: travel_times_df is None or empty")
-            return float('inf')
-        
-        if pd.isna(origin_id) or pd.isna(dest_id):
-            print(f"Error: Missing station IDs - origin: {origin_id}, dest: {dest_id}")
-            return float('inf')
-            
-        # Check if columns exist in the DataFrame
-        required_columns = ['origin_uuid', 'destination_uuid', 'travel_min']
-        if not all(col in travel_times_df.columns for col in required_columns):
-            print(f"Error: Missing required columns in travel_times_df. Available columns: {travel_times_df.columns.tolist()}")
-            return float('inf')
-        
-        # Check direct direction (origin -> destination)
-        direct = travel_times_df[
-            (travel_times_df['origin_uuid'] == origin_id) & 
-            (travel_times_df['destination_uuid'] == dest_id)
-        ]
-        
-        if not direct.empty:
-            print(f"Found direct route: {len(direct)} matches")
-            print(f"Sample travel time: {direct['travel_min'].iloc[0]} min")
-            return direct['travel_min'].iloc[0]
-        
-        print("No direct route found, checking reverse direction...")
-        
-        # Check reverse direction (destination -> origin)
-        reverse = travel_times_df[
-            (travel_times_df['origin_uuid'] == dest_id) & 
-            (travel_times_df['destination_uuid'] == origin_id)
-        ]
-        
-        if not reverse.empty:
-            print(f"Found reverse route: {len(reverse)} matches")
-            print(f"Sample travel time: {reverse['travel_min'].iloc[0]} min")
-            return reverse['travel_min'].iloc[0]
-            
-        print("No route found in either direction")
-        
-        # Debug: Check if either station exists in the travel times data
-        origin_exists = (travel_times_df['origin_uuid'] == origin_id).any() or \
-                       (travel_times_df['destination_uuid'] == origin_id).any()
-        dest_exists = (travel_times_df['origin_uuid'] == dest_id).any() or \
-                     (travel_times_df['destination_uuid'] == dest_id).any()
-        
-        print(f"Origin station in data: {'Yes' if origin_exists else 'No'}")
-        print(f"Destination station in data: {'Yes' if dest_exists else 'No'}")
-        
-        return float('inf')  # No route found
-        
-    except Exception as e:
-        print(f"Error in get_travel_time: {str(e)}")
-        print(f"Origin ID: {origin_id}, Dest ID: {dest_id}")
-        if 'travel_times_df' in locals():
-            print(f"DataFrame columns: {travel_times_df.columns.tolist()}")
-            print(f"DataFrame sample: {travel_times_df.head(1).to_dict()}")
-        return float('inf')
+# Travel time functions have been moved to data_loader.py
 
 def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df=None):
     # Create a base map centered on Tokyo with settings to prevent clustering
@@ -328,33 +212,9 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
     return m
 
 
-# Load school data with locations
-@st.cache_data
-def load_schools_with_locations():
-    df = pd.read_csv(SCHOOLS_FILE)
-    return df
+# School and teacher location functions have been moved to data_loader.py
 
-# Add station coordinates for teachers using tokyo_stations_gps.csv
-@st.cache_data
-def add_teacher_locations(teachers_df, _):
-    # Load station coordinates from tokyo_stations_gps.csv
-    stations_gps = pd.read_csv(DATA_DIR / 'tokyo_stations_gps.csv')
-    
-    # Create a mapping of station_id to coordinates
-    station_coords = {}
-    for _, row in stations_gps.iterrows():
-        station_coords[row['id']] = (row['latitude'], row['longitude'])
-    
-    # Add coordinates to teachers using station_id
-    teachers_df['station_lat'] = teachers_df['station_id'].map(lambda x: station_coords.get(x, (None, None))[0])
-    teachers_df['station_lon'] = teachers_df['station_id'].map(lambda x: station_coords.get(x, (None, None))[1])
-    
-    return teachers_df
-
-# Load data
-schools_df = load_schools_with_locations()
-teachers_df = load_teachers()
-teachers_df = add_teacher_locations(teachers_df, schools_df)
+# School data and teacher locations are already loaded above
 travel_times_df = load_travel_times()
 
 # School selection for filtering
@@ -382,28 +242,94 @@ selected_school_id = st.sidebar.selectbox(
     format_func=format_school_option
 )
 
-# Show assigned teachers for the selected school
+# Add custom CSS
+st.markdown(css_app.get_custom_css(), unsafe_allow_html=True)
+
+# Show school details and assigned teachers
 if selected_school_id:
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Assigned Teachers")
-    assigned_teachers = current_assignments[current_assignments['school_id'] == selected_school_id]
+    # Get detailed school information
+    school_details = display_utils.get_school_details(
+        selected_school_id,
+        teachers_df,
+        schools_df,
+        travel_times_df
+    )
     
-    if not assigned_teachers.empty:
-        # Get teacher details for the assigned teachers
-        school_teachers = teachers_df[teachers_df['id'].isin(assigned_teachers['teacher_id'])]
+    if school_details:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("School Details")
         
-        # Display each teacher with their type and station
-        for _, teacher in school_teachers.iterrows():
-            gender_icon = '♂️' if teacher.get('gender') == 'Male' else '♀️'
-            teacher_type = teacher.get('type', 'Unknown')
-            station = teacher.get('station', 'Unknown')
+        # School name and station
+        st.sidebar.markdown(f"**{school_details['name']}**")
+        st.sidebar.caption(f"🚉 {school_details['station']}")
+        
+        # Student count
+        st.sidebar.markdown("---")
+        st.sidebar.metric("👥 Students", f"{school_details['student_count']:,}")
+        
+        # Teacher count and gender ratio
+        st.sidebar.metric("👨‍🏫 Teachers", 
+                         f"{school_details['teacher_count']}",
+                         f"{school_details['gender_ratio']} (♂:♀)")
+        
+        # Travel time statistics
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("**Travel Times**")
+        st.sidebar.metric("🚆 Total Travel Time", 
+                         f"{school_details['total_travel_time']:,.1f} min")
+        
+        # Assigned teachers list
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Assigned Teachers")
+        assigned_teachers = current_assignments[current_assignments['school_id'] == selected_school_id]
+        
+        if not assigned_teachers.empty:
+            # Get teacher details for the assigned teachers
+            school_teachers = teachers_df[teachers_df['id'].isin(assigned_teachers['teacher_id'])].copy()
             
-            st.sidebar.markdown(
-                f"- {gender_icon} **{teacher['name']}**  \n"
-                f"  *{teacher_type}* at {station}"
-            )
-    else:
-        st.sidebar.info("No teachers currently assigned to this school")
+            # Add travel time to school for each teacher
+            if 'station_id' in school_teachers.columns:
+                school_station = schools_df[schools_df['id'] == selected_school_id]['station_uuid'].iloc[0]
+                school_teachers['travel_time'] = school_teachers['station_id'].apply(
+                    lambda x: get_travel_time(x, school_station, travel_times_df) if pd.notna(x) else float('inf')
+                )
+            
+            # Create a list to store teachers and their sort keys
+            teachers_list = []
+            
+            for _, teacher in school_teachers.iterrows():
+                # Determine if teacher is assigned and not willing to move
+                has_school = pd.notna(teacher.get('school_id')) and teacher.get('school_id') != ''
+                is_assigned_not_moving = has_school and not teacher.get('move', True)
+                
+                # Create sort key: (is_assigned_not_moving, is_female, is_bilingual, travel_time)
+                sort_key = (
+                    is_assigned_not_moving,  # False (0) comes before True (1)
+                    0 if teacher.get('gender') == 'Female' else 1,  # Female first
+                    0 if teacher.get('type') == 'Bilingual' else 1,  # Bilingual first
+                    teacher.get('travel_time', float('inf'))  # Shorter travel time first
+                )
+                
+                teachers_list.append((sort_key, teacher))
+            
+            # Sort teachers: assigned+not_moving at bottom, then by gender, type, travel time
+            teachers_list.sort(key=lambda x: x[0])
+            
+            # Display sorted teachers
+            for sort_key, teacher in teachers_list:
+                gender_icon = '♀️' if teacher.get('gender') == 'Female' else '♂️'
+                teacher_type = teacher.get('type', 'Teacher')
+                station = teacher.get('station', 'Unknown station')
+                
+                st.sidebar.markdown(
+                    f"<div>"
+                    f"{gender_icon} <strong>{teacher['name']}</strong><br>"
+                    f"<span style='font-style: italic;'>{teacher_type}</span> at {station}"
+                    "</div>",
+                    unsafe_allow_html=True
+                )
+        else:
+            st.sidebar.info("No teachers currently assigned to this school")
 
 # Display the map
 map_fig = create_map(teachers_df, schools_df, selected_school_id if selected_school_id else None, travel_times_df)
@@ -414,9 +340,11 @@ if selected_school_id:
     selected_school = schools_df[schools_df['id'] == selected_school_id].iloc[0]
     st.subheader(f"Teachers within 60 minutes of {selected_school['name']}")
     
-    # Filter teachers within 60 minutes
+    # Filter teachers within 60 minutes using the filtered teachers from session state
     teachers_within_range = []
-    for _, teacher in teachers_df.iterrows():
+    filtered_teachers = st.session_state.get('filtered_teachers', teachers_df)
+    
+    for _, teacher in filtered_teachers.iterrows():
         if 'station_id' not in teacher or pd.isna(teacher['station_id']) or teacher['station_id'] == '':
             continue
             
@@ -438,25 +366,68 @@ if selected_school_id:
         # Convert travel_time to numeric for sorting
         result_df['travel_minutes'] = result_df['travel_time'].str.extract('(\d+)').astype(float)
         
-        # Sort by travel time
-        result_df = result_df.sort_values('travel_minutes')
+        # Prepare sorting columns
+        sort_columns = []
+        
+        # Add bilingual column if it exists
+        if 'bilingual' in result_df.columns:
+            sort_columns.append('bilingual')
+            
+        # Create sort columns
+        result_df['sort_gender'] = result_df['gender'].apply(lambda x: 0 if x == 'Female' else 1)
+        
+        # Create a priority column: 1=assigned+not willing to move (will be sorted to bottom), 0=others
+        result_df['sort_priority'] = 0  # Default priority (lower is higher priority)
+        if 'move' in result_df.columns:
+            result_df['sort_priority'] = result_df.apply(
+                lambda x: 1 if (pd.notna(x['school_id']) and not x['move']) else 0, 
+                axis=1
+            )
+        
+        # Define the sort order - first by priority (to put assigned+not_willing_to_move at bottom)
+        # Then for the rest: female first, then bilingual, then travel time
+        sort_columns = ['sort_priority']  # Sort by priority first (0=normal, 1=assigned+not_willing_to_move)
+        sort_columns.extend(['sort_gender'])  # Then by gender (female first)
+        
+        # Add bilingual status if column exists
+        if 'bilingual' in result_df.columns:
+            sort_columns.append('bilingual')
+            
+        # Add travel time
+        sort_columns.append('travel_minutes')
+        
+        # Sort the DataFrame
+        result_df = result_df.sort_values(by=sort_columns)
+        
+        # Clean up temporary columns
+        result_df = result_df.drop(columns=['sort_gender', 'has_school'], errors='ignore')
         
         # Add gender icons
         result_df['Gender'] = result_df['gender'].apply(lambda x: '♂️' if x == 'Male' else '♀️')
         
+        # Get school names for assigned teachers
+        school_names = schools_df.set_index('id')['name'].to_dict()
+        result_df['assigned_school'] = result_df['school_id'].map(school_names).fillna('Unassigned')
+        
         # Prepare display columns with the correct final names
-        display_cols = ['name', 'Gender', 'type', 'station', 'travel_time']
-        new_columns = ['Name', ' ', 'Type', 'Station', 'Travel Time']
+        display_cols = ['name', 'Gender', 'type', 'assigned_school', 'travel_time']
+        new_columns = ['Name', ' ', 'Type', 'Assigned School', 'Travel Time']
         display_df = result_df[display_cols].copy()
         display_df.columns = new_columns
         
         # Debug: Print DataFrame info and sample data
         if not display_df.empty:
-            st.write("Debug - First row 'Type' value:", display_df.iloc[0]['Type'])
-            
             # Convert DataFrame to HTML with custom styling
             def get_row_style(row):
-                color = '#e6f3ff' if row['Type'] == 'Native' else '#f3e6ff'
+                # Get the original row index from the result_df
+                idx = result_df[result_df['name'] == row['Name']].index[0]
+                
+                # Check if teacher is willing to move (using 'move' column from teachers.csv)
+                if 'move' in result_df.columns and not result_df.loc[idx, 'move']:
+                    return 'style="background-color: #f0f0f0; color: #999;"'  # Grey background for not willing to move
+                
+                # Default coloring based on teacher type
+                color = '#e6f3ea' if row['Type'] == 'Native' else '#f3e6ff'
                 return f'style="background-color: {color};"'
                 
             # Create HTML table
@@ -618,9 +589,24 @@ for i in range(0, total_teachers, cols_per_row):
                     label_visibility="collapsed"
                 )
                 
-                # Update the teacher's school in the original DataFrame
+                # Update the teacher's school in both dataframes
                 if new_school != current_school:
+                    # Update teachers_df
                     teachers_df.loc[teacher_mask, 'school_id'] = new_school if new_school else None
+                    
+                    # Update assignments_df
+                    teacher_id = teacher['id']
+                    # Remove any existing assignments for this teacher
+                    assignments_df = assignments_df[assignments_df['teacher_id'] != teacher_id]
+                    
+                    # If a new school is selected, add the assignment
+                    if new_school and new_school != '':
+                        new_assignment = pd.DataFrame([{
+                            'teacher_id': teacher_id,
+                            'school_id': new_school,
+                            'assigned_at': pd.Timestamp.now()
+                        }])
+                        assignments_df = pd.concat([assignments_df, new_assignment], ignore_index=True)
                 
                 # Move preference checkbox
                 move = st.checkbox(
@@ -665,44 +651,57 @@ if st.button("Save Changes"):
 # Display school statistics
 st.header("School Statistics")
 
-# Calculate and display occupancy
-occupancy = display_utils.display_school_occupancy(assignments_df, schools_df)
-balance = display_utils.check_school_balance(assignments_df, teachers_df)
+# Calculate and display occupancy using filtered teachers
+occupancy = display_utils.display_school_occupancy(assignments_df[assignments_df['teacher_id'].isin(filtered_teachers['id'])], schools_df)
+balance = display_utils.check_school_balance(assignments_df, filtered_teachers)
 balance_summary = display_utils.get_school_balance_summary(balance)
 
+# Calculate basic metrics
+unassigned_teachers = teachers_df[teachers_df['school_id'].isna() | (teachers_df['school_id'] == '')]
+unassigned_count = len(unassigned_teachers)
+total_teachers = len(teachers_df)
+unassigned_pct = (unassigned_count / total_teachers * 100) if total_teachers > 0 else 0
+
+# Calculate travel time statistics
+travel_stats = display_utils.calculate_total_travel_time(teachers_df, schools_df, travel_times_df)
+
+# Calculate metrics and percentages
+total_schools = len(schools_df)
+no_teacher_schools = int(occupancy.sum())
+no_teacher_pct = (no_teacher_schools / total_schools * 100) if total_schools > 0 else 0
+
 # Create columns for metrics
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 
+# Column 1: Teacher Statistics
 with col1:
-    st.metric("Total Schools", len(schools_df))
-    st.metric("Schools with No Teachers", f"{occupancy.sum()} ({occupancy.mean()*100:.1f}%)")
+    st.metric("Total Teachers", f"{total_teachers:,}")
+    st.metric(
+        "Unassigned Teachers", 
+        f"{unassigned_count:,}",
+        f"{unassigned_pct:.1f}% of teachers"
+    )
 
+# Column 2: Travel Time Statistics
 with col2:
-    st.metric("Schools with 2+ Teachers", 
-             f"{balance_summary['schools_with_2plus_teachers']} "
-             f"({balance_summary['schools_with_2plus_teachers']/len(schools_df)*100:.1f}%)")
+    st.metric(
+        "Total Travel Time (min)",
+        f"{travel_stats['total_travel_time']:,.1f}"
+    )
+    st.metric(
+        "Avg. Travel (min/teacher)",
+        f"{travel_stats['average_travel_time']:,.1f}"
+    )
 
+# Column 3: School Statistics
 with col3:
-    if balance_summary['schools_with_2plus_teachers'] > 0:
-        gender_balance_pct = (balance_summary['schools_with_gender_balance'] / 
-                            balance_summary['schools_with_2plus_teachers'] * 100)
-        st.metric("Gender Balanced Schools", 
-                 f"{balance_summary['schools_with_gender_balance']} "
-                 f"({gender_balance_pct:.1f}% of 2+ teacher schools)")
-    else:
-        st.metric("Gender Balanced Schools", "N/A")
-
-with col4:
-    schools_with_3plus = balance[balance['teacher_count'] > 2]
-    if not schools_with_3plus.empty:
-        bilingual_pct = (balance_summary['schools_with_bilingual'] / 
-                        len(schools_with_3plus) * 100)
-        st.metric("Schools with Bilingual", 
-                 f"{balance_summary['schools_with_bilingual']} "
-                 f"({bilingual_pct:.1f}% of 3+ teacher schools)")
-    else:
-        st.metric("Schools with Bilingual", "N/A")
-
+    st.metric("Total Schools", f"{total_schools:,}")
+    st.metric(
+        "Schools with No Teachers", 
+        f"{no_teacher_schools:,}",
+        f"{no_teacher_pct:.1f}% of schools"
+    )
+    
 # Display detailed balance information
 with st.expander("View Detailed School Balance"):
     if not balance.empty:
@@ -714,19 +713,13 @@ with st.expander("View Detailed School Balance"):
             how='left'
         )
         display_balance = display_balance[[
-            'school_id', 'name', 'teacher_count', 'has_both_genders', 'has_bilingual'
+            'school_id', 'name', 'teacher_count'
         ]]
         display_balance = display_balance.rename(columns={
             'school_id': 'School ID',
             'name': 'School Name',
-            'teacher_count': 'Teacher Count',
-            'has_both_genders': 'Has Gender Balance',
-            'has_bilingual': 'Has Bilingual Teacher'
+            'teacher_count': 'Teacher Count'
         })
-        
-        # Format boolean columns
-        display_balance['Has Gender Balance'] = display_balance['Has Gender Balance'].map({1: '✅', 0: '❌'})
-        display_balance['Has Bilingual Teacher'] = display_balance['Has Bilingual Teacher'].map({1: '✅', 0: '❌'})
         
         st.dataframe(display_balance, use_container_width=True)
     else:
