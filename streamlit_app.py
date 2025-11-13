@@ -217,6 +217,10 @@ def create_map(teachers_df, schools_df, selected_school_id=None, travel_times_df
 # School data and teacher locations are already loaded above
 travel_times_df = load_travel_times()
 
+# Initialize session state for temporary assignments
+if 'temp_assignments' not in st.session_state:
+    st.session_state.temp_assignments = {}
+
 # School selection for filtering
 st.sidebar.subheader("Filter by School")
 
@@ -228,8 +232,9 @@ def get_current_teacher_counts():
     # Start with current assignments
     counts = current_assignments['school_id'].value_counts().to_dict()
     
-    # Update with pending changes
-    for teacher_id, school_id in st.session_state.temp_assignments.items():
+    # Update with pending changes if they exist
+    temp_assignments = getattr(st.session_state, 'temp_assignments', {})
+    for teacher_id, school_id in temp_assignments.items():
         # Remove from old school if teacher was assigned
         old_school = current_assignments[
             (current_assignments['teacher_id'] == teacher_id) & 
