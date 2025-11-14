@@ -1,7 +1,8 @@
 import pandas as pd
 import pulp
-import numpy as np
-from typing import Dict, List, Tuple, Optional
+import pandas as pd
+import time
+from typing import Dict, List, Optional, Tuple, Optional
 from data_loader import (
     load_teachers, 
     load_schools_with_locations, 
@@ -46,13 +47,26 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     Returns:
         Dictionary mapping school IDs to lists of assigned teacher IDs
     """
+    print("\n" + "="*80)
+    print("STARTING OPTIMIZATION")
+    print("="*80)
     # Load data
+    print("\n[1/6] Loading data...")
     teachers_df = load_teachers()
     schools_df = load_schools_with_locations()
     travel_times_df = load_travel_times()
     
+    # Print data summary
+    print(f"  • Loaded {len(teachers_df)} teachers ({len(teachers_df[teachers_df['move'] == False])} fixed, {len(teachers_df[teachers_df['move'] == True])} movable)")
+    print(f"  • Loaded {len(schools_df)} schools with student counts: {schools_df['num_students'].sum()} total students")
+    print(f"  • Loaded travel times between {len(travel_times_df)} station pairs")
+    
     # Filter teachers who are willing to move
     movable_teachers = teachers_df[teachers_df['move'] == True].copy()
+    teacher_ids = movable_teachers['id'].tolist()
+    school_ids = schools_df['id'].tolist()
+    
+    print(f"\n[2/6] Processing {len(teacher_ids)} movable teachers and {len(school_ids)} schools")
     
     # Get current assignments for teachers who aren't moving
     fixed_assignments = {}
@@ -61,7 +75,17 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         if pd.notna(school_id) and school_id != '':
             fixed_assignments.setdefault(school_id, []).append(row['id'])
     
+    # Print fixed assignments
+    if fixed_assignments:
+        print(f"\n[3/6] Found {sum(len(v) for v in fixed_assignments.values())} fixed assignments:")
+        for school_id, teachers in fixed_assignments.items():
+            school_name = schools_df[schools_df['id'] == school_id]['name'].iloc[0] if not schools_df[schools_df['id'] == school_id].empty else 'Unknown'
+            print(f"  • {school_name} ({school_id}): {len(teachers)} teachers")
+    else:
+        print("\n[3/6] No fixed assignments found")
+    
     # Create the optimization problem
+    print("\n[4/6] Setting up optimization problem...")
     prob = pulp.LpProblem("Teacher_School_Assignment", pulp.LpMinimize)  # Minimize total travel time
     
     # Decision variables: x_ij = 1 if teacher i is assigned to school j
@@ -111,16 +135,16 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         # Total teachers (fixed + assigned)
         total_teachers = pulp.lpSum(x[(t, school_id)] for t in teacher_ids) + fixed_count
         
-        # School must have at least one teacher (highest priority constraint)
-        # This overrides the required teachers constraint if needed
+        # School must have at least one teacher (hard constraint)
         prob += total_teachers >= 1
-        
-        # School should have at least required teachers, but only if it doesn't conflict with the minimum of 1
-        if required > 1:  # Only add this if it's more restrictive than the minimum
-            prob += total_teachers >= required
         
         # School cannot have more than 4 teachers
         prob += total_teachers <= 4
+        
+        # If there are fixed assignments, ensure those teachers stay assigned
+        for t in fixed_assignments.get(school_id, []):
+            if t in teacher_ids:  # If this is a movable teacher (shouldn't happen, but just in case)
+                prob += x[(t, school_id)] == 1  # Force the assignment
     
     # 3. Create binary variables for school coverage
     school_covered = pulp.LpVariable.dicts("covered", school_ids, cat='Binary')
@@ -141,10 +165,11 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     # Priority 3: Maximize student coverage (lowest weight)
 
     # Weights (must be ordered: w1 >> w2 >> w3 >> w4)
-    w1 = 10000000  # Weight for school coverage (highest priority) - significantly increased
-    w2 = 1000      # Weight for travel time (lower priority)
-    w3 = 1         # Weight for student coverage (lowest priority)
-    w4 = 100000    # Weight for balancing teacher distribution (high priority, but below coverage)
+    # Higher weights mean higher priority
+    w1 = 1000000   # Weight for school coverage (highest priority)
+    w2 = 10000     # Weight for teacher distribution (second priority)
+    w3 = 1         # Weight for travel time (lowest priority)
+    w4 = 100000    # Weight for respecting fixed assignments (very high priority)
 
     # Calculate maximum possible values for normalization
     max_students = schools_df['num_students'].max() if not schools_df.empty else 1
@@ -156,10 +181,11 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         num_students = schools_df[schools_df['id'] == school_id]['num_students'].iloc[0]
         school_requirements[school_id] = get_required_teachers(num_students)
     
-    # Four-part objective function
+    # Create objective function components
     objective = []
     
     # Priority 1: Maximize number of schools with at least one teacher
+    # This is now a hard constraint, but we'll keep it in the objective with high weight
     objective.append(-w1 * pulp.lpSum(1 - school_covered[s] for s in school_ids))
     
     # Priority 2: Balance teacher distribution (minimize deviation from required)
@@ -178,30 +204,52 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         prob += (total_teachers - required) == (deviation_pos[school_id] - deviation_neg[school_id])
     
     # Add the balance term to the objective (minimize total absolute deviation)
-    objective.append(w4 * pulp.lpSum(deviation_pos[s] + deviation_neg[s] for s in school_ids))
+    # Using absolute deviation instead of squared to avoid non-linear terms
+    objective.append(w2 * pulp.lpSum(deviation_pos[s] + deviation_neg[s] for s in school_ids))
     
-    # Priority 3: Minimize total travel time (with no upper limit)
-    objective.append(w2 * pulp.lpSum(
+    # Priority 3: Respect fixed assignments
+    # This adds a penalty for moving teachers with fixed assignments
+    for school_id, teachers in fixed_assignments.items():
+        for t in teachers:
+            # If this is a movable teacher (shouldn't happen, but just in case)
+            if t in teacher_ids:
+                # Add a large penalty if the teacher is not assigned to their fixed school
+                objective.append(w4 * (1 - x[(t, school_id)]))
+    
+    # Priority 4: Minimize total travel time
+    objective.append(w3 * pulp.lpSum(
         (travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)]
         for t in teacher_ids 
         for s in school_ids
         if (t, s) in travel_costs
     ))
     
-    # Priority 4: Maximize student coverage (negative because we're minimizing)
-    objective.append(-w3 * pulp.lpSum(
-        (schools_df.loc[schools_df['id'] == s, 'num_students'].iloc[0] / max_students) * x[(t, s)]
-        for t in teacher_ids
-        for s in school_ids
-    ))
-    
     # Set the complete objective
     prob += pulp.lpSum(objective)
     
     # Solve the problem
-    prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    print("\n[5/6] Solving optimization problem...")
+    start_time = time.time()
+    prob.solve(pulp.PULP_CBC_CMD(msg=True))  # Enable solver messages
+    solve_time = time.time() - start_time
+    
+    # Print solver status
+    print(f"\n[6/6] Optimization completed in {solve_time:.2f} seconds")
+    print(f"Solver status: {pulp.LpStatus[prob.status]}")
+    print(f"Objective value: {pulp.value(prob.objective):.2f}")
+    
+    # Print objective components
+    print("\nObjective components:")
+    try:
+        print(f"  • School coverage: {pulp.value(-w1 * pulp.lpSum(1 - school_covered[s] for s in school_ids)):,.0f}")
+        print(f"  • Teacher distribution: {pulp.value(w2 * pulp.lpSum(deviation_pos[s] + deviation_neg[s] for s in school_ids)):,.0f}")
+        print(f"  • Fixed assignment penalties: {pulp.value(sum(w4 * (1 - x[(t, school_id)]) for school_id, teachers in fixed_assignments.items() for t in teachers if t in teacher_ids)):,.0f}")
+        print(f"  • Travel time: {pulp.value(w3 * pulp.lpSum((travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)] for t in teacher_ids for s in school_ids if (t, s) in travel_costs)):,.2f}")
+    except Exception as e:
+        print(f"  • Could not calculate all objective components: {str(e)}")
     
     # Process results
+    print("\nProcessing results...")
     assignments = {s: [] for s in school_ids}
     
     # Add fixed assignments
@@ -210,10 +258,52 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
             assignments[school_id].extend(teacher_list)
     
     # Add optimized assignments
+    teacher_assignments = {t: None for t in teacher_ids}
     for t in teacher_ids:
         for s in school_ids:
             if pulp.value(x[(t, s)]) == 1:
                 assignments[s].append(t)
+                teacher_assignments[t] = s
+    
+    # Print assignment summary
+    print("\nAssignment Summary:")
+    print("-" * 100)
+    print(f"{'School ID':<10} {'School Name':<30} {'Students':>8} {'Req.':>5} {'Assigned':>8} {'Fixed':>6} {'New':>5} {'Status':<15}")
+    print("-" * 100)
+    
+    for school_id in school_ids:
+        school_info = schools_df[schools_df['id'] == school_id].iloc[0] if not schools_df[schools_df['id'] == school_id].empty else None
+        school_name = school_info['name'] if school_info is not None else 'Unknown'
+        num_students = school_info.get('num_students', 0) if school_info is not None else 0
+        required = get_required_teachers(num_students)
+        assigned = len(assignments.get(school_id, []))
+        fixed = len(fixed_assignments.get(school_id, []))
+        new = assigned - fixed
+        
+        # Check constraints
+        status = []
+        if assigned < 1:
+            status.append("NO TEACHERS")
+        elif assigned > 4:
+            status.append("TOO MANY")
+        elif assigned < required:
+            status.append(f"UNDER {required}")
+        elif assigned > required:
+            status.append(f"OVER {required}")
+        else:
+            status.append("OK")
+            
+        print(f"{school_id:<10} {school_name[:28]:<30} {num_students:>8} {required:>5} {assigned:>8} {fixed:>6} {new:>5} {'/'.join(status):<15}")
+    
+    # Print unassigned teachers (shouldn't happen with current constraints)
+    unassigned = [t for t, s in teacher_assignments.items() if s is None]
+    if unassigned:
+        print(f"\nWARNING: {len(unassigned)} teachers were not assigned to any school!")
+        print("Unassigned teachers:", ", ".join(unassigned))
+    
+    print("\n" + "="*80)
+    print("OPTIMIZATION COMPLETE")
+    print("="*80 + "\n")
     
     return assignments
 
