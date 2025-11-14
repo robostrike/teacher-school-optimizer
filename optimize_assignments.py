@@ -200,15 +200,19 @@ def run_optimization():
         # Prepare results for display
         results = []
         
-        for school_id, teachers in optimized_assignments.items():
-            if not teachers:
-                continue
-                
+        # Get all school IDs from the schools DataFrame
+        all_school_ids = schools_df['id'].unique()
+        
+        # Process all schools, not just those with assignments
+        for school_id in all_school_ids:
             school_info = schools_df[schools_df['id'] == school_id].iloc[0]
             num_students = school_info.get('num_students', 0)
             required = get_required_teachers(num_students)
             
-            # Calculate total and average travel time for this school's teachers
+            # Get teachers assigned to this school (if any)
+            teachers = optimized_assignments.get(school_id, [])
+            
+            # Calculate travel times for assigned teachers
             travel_times = []
             for teacher_id in teachers:
                 teacher_station = get_teacher_station(teacher_id, teachers_df)
@@ -219,6 +223,7 @@ def run_optimization():
                     if travel_time < float('inf'):
                         travel_times.append(travel_time)
             
+            # Calculate average travel time (0 if no teachers assigned)
             avg_travel_time = sum(travel_times) / len(travel_times) if travel_times else 0
             
             results.append({
@@ -227,7 +232,7 @@ def run_optimization():
                 'num_students': num_students,
                 'required_teachers': required,
                 'assigned_teachers': len(teachers),
-                'teacher_ids': ', '.join(teachers),
+                'teacher_ids': ', '.join(teachers) if teachers else '',
                 'avg_travel_time': avg_travel_time,
                 'total_travel_time': sum(travel_times) if travel_times else 0
             })
