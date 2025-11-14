@@ -115,24 +115,50 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         if fixed_count == 0:  # Only add this constraint if there are no fixed assignments
             prob += pulp.lpSum(x[(t, school_id)] for t in teacher_ids) >= 1
     
-    # 3. Objective: Minimize total travel time while prioritizing schools with more students
-    # We use a weighted sum where student count has higher priority than travel time
-    student_weight = 1000  # Weight for student count (higher = more important)
-    
-    # Calculate the maximum possible student count for normalization
+    # 3. Create binary variables for school coverage
+    school_covered = pulp.LpVariable.dicts("covered", school_ids, cat='Binary')
+    for s in school_ids:
+        fixed_count = len(fixed_assignments.get(s, []))
+        if fixed_count == 0:
+            # School is covered if it has at least one assigned teacher
+            prob += school_covered[s] <= pulp.lpSum(x[(t, s)] for t in teacher_ids)
+        else:
+            # Schools with fixed assignments are always considered covered
+            prob += school_covered[s] == 1
+
+    # 4. Three-tiered objective
+    # Priority 1: Maximize number of schools with at least one teacher (highest weight)
+    # Priority 2: Minimize total travel time (medium weight)
+    # Priority 3: Maximize student coverage (lowest weight)
+
+    # Weights (must be ordered: w1 >> w2 >> w3)
+    w1 = 100000  # Weight for school coverage (highest priority)
+    w2 = 1000    # Weight for travel time
+    w3 = 1       # Weight for student coverage
+
+    # Calculate maximum possible values for normalization
     max_students = schools_df['num_students'].max() if not schools_df.empty else 1
-    
-    # Create the objective function
-    prob += pulp.lpSum(
-        (
-            # Student coverage component (negative because we're minimizing)
-            -student_weight * (schools_df.loc[schools_df['id'] == s, 'num_students'].iloc[0] / max_students) + 
-            # Travel time component
-            travel_costs.get((t, s), 1000)  # Default to high cost if no travel time available
-        ) * x[(t, s)]
-        for t in teacher_ids
-        for s in school_ids
-        if (t, s) in travel_costs  # Only include valid teacher-school pairs with travel data
+    max_travel = max(travel_costs.values()) if travel_costs else 1
+
+    # Three-tiered objective
+    prob += (
+        # Priority 1: Maximize number of schools with at least one teacher
+        -w1 * pulp.lpSum(1 - school_covered[s] for s in school_ids) +
+        
+        # Priority 2: Minimize total travel time
+        w2 * pulp.lpSum(
+            (travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)]
+            for t in teacher_ids 
+            for s in school_ids
+            if (t, s) in travel_costs
+        ) +
+        
+        # Priority 3: Maximize student coverage (negative because we're minimizing)
+        -w3 * pulp.lpSum(
+            (schools_df.loc[schools_df['id'] == s, 'num_students'].iloc[0] / max_students) * x[(t, s)]
+            for t in teacher_ids
+            for s in school_ids
+        )
     )
     
     # Solve the problem
