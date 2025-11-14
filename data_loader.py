@@ -65,8 +65,8 @@ def load_teachers() -> pd.DataFrame:
     df['school_id'] = df['school_id'].fillna('').astype(str)
     
     # Update move status: if teacher has no school, they should be movable
-    # If they have a school but move=False, they are stable
-    df['move'] = df['school_id'] == ''
+    # Otherwise, respect their current move status
+    df['move'] = (df['school_id'] == '') | (df['move'] == True)
     
     return df
 
