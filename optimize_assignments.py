@@ -149,33 +149,51 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     max_students = schools_df['num_students'].max() if not schools_df.empty else 1
     max_travel = max(travel_costs.values()) if travel_costs else 1
 
+    # Calculate required teachers for each school
+    school_requirements = {}
+    for school_id in school_ids:
+        num_students = schools_df[schools_df['id'] == school_id]['num_students'].iloc[0]
+        school_requirements[school_id] = get_required_teachers(num_students)
+    
     # Four-part objective function
-    prob += (
-        # Priority 1: Maximize number of schools with at least one teacher
-        -w1 * pulp.lpSum(1 - school_covered[s] for s in school_ids) +
+    objective = []
+    
+    # Priority 1: Maximize number of schools with at least one teacher
+    objective.append(-w1 * pulp.lpSum(1 - school_covered[s] for s in school_ids))
+    
+    # Priority 2: Balance teacher distribution (minimize deviation from required)
+    # Create deviation variables for each school
+    deviation = {}
+    for school_id in school_ids:
+        fixed_count = len(fixed_assignments.get(school_id, []))
+        required = school_requirements[school_id]
         
-        # Priority 2: Balance teacher distribution (minimize deviation from required)
-        w4 * pulp.lpSum(
-            pulp.lpSum(x[(t, s)] for t in teacher_ids) + fixed_assignments.get(s, []) - required
-            for s in school_ids
-            for _ in range(1)  # Dummy loop to handle the expression
-        ) +
+        # Calculate total teachers (fixed + assigned)
+        total_teachers = fixed_count + pulp.lpSum(x[(t, school_id)] for t in teacher_ids)
         
-        # Priority 3: Minimize total travel time
-        w2 * pulp.lpSum(
-            (travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)]
-            for t in teacher_ids 
-            for s in school_ids
-            if (t, s) in travel_costs
-        ) +
+        # Calculate absolute deviation from required
+        deviation[school_id] = total_teachers - required
         
-        # Priority 4: Maximize student coverage (negative because we're minimizing)
-        -w3 * pulp.lpSum(
-            (schools_df.loc[schools_df['id'] == s, 'num_students'].iloc[0] / max_students) * x[(t, s)]
-            for t in teacher_ids
-            for s in school_ids
-        )
-    )
+    # Add the balance term to the objective (minimize total absolute deviation)
+    objective.append(w4 * pulp.lpSum(deviation[s] * deviation[s] for s in school_ids))  # Using squared deviation to prefer balanced solutions
+    
+    # Priority 3: Minimize total travel time
+    objective.append(w2 * pulp.lpSum(
+        (travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)]
+        for t in teacher_ids 
+        for s in school_ids
+        if (t, s) in travel_costs
+    ))
+    
+    # Priority 4: Maximize student coverage (negative because we're minimizing)
+    objective.append(-w3 * pulp.lpSum(
+        (schools_df.loc[schools_df['id'] == s, 'num_students'].iloc[0] / max_students) * x[(t, s)]
+        for t in teacher_ids
+        for s in school_ids
+    ))
+    
+    # Set the complete objective
+    prob += pulp.lpSum(objective)
     
     # Solve the problem
     prob.solve(pulp.PULP_CBC_CMD(msg=False))
