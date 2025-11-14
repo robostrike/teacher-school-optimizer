@@ -112,10 +112,12 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         total_teachers = pulp.lpSum(x[(t, school_id)] for t in teacher_ids) + fixed_count
         
         # School must have at least one teacher (highest priority constraint)
+        # This overrides the required teachers constraint if needed
         prob += total_teachers >= 1
         
-        # School should have at least required teachers if possible
-        prob += total_teachers >= required
+        # School should have at least required teachers, but only if it doesn't conflict with the minimum of 1
+        if required > 1:  # Only add this if it's more restrictive than the minimum
+            prob += total_teachers >= required
         
         # School cannot have more than 4 teachers
         prob += total_teachers <= 4
