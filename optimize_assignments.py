@@ -1,7 +1,14 @@
 import pandas as pd
 import pulp
 from typing import Dict, List, Tuple
-from data_loader import load_teachers, load_schools_with_locations, load_assignments, get_current_assignments, save_assignments
+from data_loader import (
+    load_teachers, 
+    load_schools_with_locations, 
+    load_assignments, 
+    get_current_assignments, 
+    save_assignments,
+    assign_teacher_to_school
+)
 from datetime import datetime
 
 def get_required_teachers(num_students: int) -> int:
@@ -124,6 +131,7 @@ def update_assignments(assignments: Dict[str, List[str]]) -> None:
     
     # Save the updated assignments
     save_assignments(assignments_df)
+
 
 def run_optimization():
     """Run the optimization and return the results."""
