@@ -95,9 +95,9 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     
     # Add constraints
     
-    # 1. Each teacher can be assigned to at most one school
+    # 1. Each teacher must be assigned to exactly one school
     for t in teacher_ids:
-        prob += pulp.lpSum(x[(t, s)] for s in school_ids) <= 1
+        prob += pulp.lpSum(x[(t, s)] for s in school_ids) == 1
     
     # 2. School assignment constraints
     for _, school in schools_df.iterrows():
@@ -108,15 +108,14 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         # Count fixed assignments for this school
         fixed_count = len(fixed_assignments.get(school_id, []))
         
-        # Constraint 2a: Each school must have at least the required number of teachers
-        # But no more than 4 teachers total (including fixed assignments)
+        # Total teachers (fixed + assigned)
         total_teachers = pulp.lpSum(x[(t, school_id)] for t in teacher_ids) + fixed_count
         
-        # School must have at least required teachers
-        prob += total_teachers >= required
-        
-        # School must have at least one teacher
+        # School must have at least one teacher (highest priority constraint)
         prob += total_teachers >= 1
+        
+        # School should have at least required teachers if possible
+        prob += total_teachers >= required
         
         # School cannot have more than 4 teachers
         prob += total_teachers <= 4
@@ -139,11 +138,11 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     # Priority 2: Minimize total travel time (medium weight)
     # Priority 3: Maximize student coverage (lowest weight)
 
-    # Weights (must be ordered: w1 >> w2 >> w3)
-    w1 = 1000000  # Weight for school coverage (highest priority) - increased
-    w2 = 1000     # Weight for travel time
-    w3 = 1        # Weight for student coverage
-    w4 = 10000    # New weight for balancing teacher distribution
+    # Weights (must be ordered: w1 >> w2 >> w3 >> w4)
+    w1 = 10000000  # Weight for school coverage (highest priority) - significantly increased
+    w2 = 1000      # Weight for travel time (lower priority)
+    w3 = 1         # Weight for student coverage (lowest priority)
+    w4 = 100000    # Weight for balancing teacher distribution (high priority, but below coverage)
 
     # Calculate maximum possible values for normalization
     max_students = schools_df['num_students'].max() if not schools_df.empty else 1
@@ -179,7 +178,7 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     # Add the balance term to the objective (minimize total absolute deviation)
     objective.append(w4 * pulp.lpSum(deviation_pos[s] + deviation_neg[s] for s in school_ids))
     
-    # Priority 3: Minimize total travel time
+    # Priority 3: Minimize total travel time (with no upper limit)
     objective.append(w2 * pulp.lpSum(
         (travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)]
         for t in teacher_ids 
