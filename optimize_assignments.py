@@ -163,19 +163,21 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     
     # Priority 2: Balance teacher distribution (minimize deviation from required)
     # Create deviation variables for each school
-    deviation = {}
+    deviation_pos = pulp.LpVariable.dicts("dev_pos", school_ids, lowBound=0, cat='Continuous')
+    deviation_neg = pulp.LpVariable.dicts("dev_neg", school_ids, lowBound=0, cat='Continuous')
+    
     for school_id in school_ids:
         fixed_count = len(fixed_assignments.get(school_id, []))
         required = school_requirements[school_id]
         
-        # Calculate total teachers (fixed + assigned)
+        # Total teachers (fixed + assigned)
         total_teachers = fixed_count + pulp.lpSum(x[(t, school_id)] for t in teacher_ids)
         
-        # Calculate absolute deviation from required
-        deviation[school_id] = total_teachers - required
-        
+        # Deviation constraints
+        prob += (total_teachers - required) == (deviation_pos[school_id] - deviation_neg[school_id])
+    
     # Add the balance term to the objective (minimize total absolute deviation)
-    objective.append(w4 * pulp.lpSum(deviation[s] * deviation[s] for s in school_ids))  # Using squared deviation to prefer balanced solutions
+    objective.append(w4 * pulp.lpSum(deviation_pos[s] + deviation_neg[s] for s in school_ids))
     
     # Priority 3: Minimize total travel time
     objective.append(w2 * pulp.lpSum(
