@@ -919,12 +919,28 @@ if st.button("Run Optimization"):
                 
                 # Show detailed teacher assignments
                 st.write("### Teacher Assignments by School")
+                
+                # Create a mapping of teacher IDs to names
+                teacher_id_to_name = {str(row['id']): row['name'] for _, row in teachers_df.iterrows()}
+                
+                # Create a copy of the results to modify
                 teacher_assignments = optimization_results[['school_name', 'teacher_ids']].copy()
-                teacher_assignments = teacher_assignments.rename(columns={
+                
+                # Convert teacher IDs to names
+                def get_teacher_names(teacher_ids_str):
+                    teacher_ids = [tid.strip() for tid in teacher_ids_str.split(',')] if pd.notna(teacher_ids_str) and teacher_ids_str != '' else []
+                    teacher_names = [teacher_id_to_name.get(tid, f"Unknown Teacher ({tid})") for tid in teacher_ids]
+                    return ', '.join(teacher_names)
+                
+                teacher_assignments['teacher_names'] = teacher_assignments['teacher_ids'].apply(get_teacher_names)
+                
+                # Prepare for display
+                display_assignments = teacher_assignments[['school_name', 'teacher_names']].rename(columns={
                     'school_name': 'School Name',
-                    'teacher_ids': 'Assigned Teachers'
+                    'teacher_names': 'Assigned Teachers'
                 })
-                st.dataframe(teacher_assignments, use_container_width=True)
+                
+                st.dataframe(display_assignments, use_container_width=True)
                 
                 # Display metrics for optimized assignments
                 st.subheader("Optimized Assignment Metrics")
