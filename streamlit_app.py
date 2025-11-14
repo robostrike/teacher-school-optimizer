@@ -879,31 +879,213 @@ with st.expander("View Detailed School Balance"):
     else:
         st.info("No school balance data available.")
 
-if st.checkbox("Show debug info"):
-    st.write("### 🐞 Debug Information")
-    st.write("#### Unassigned Teachers")
-    st.write(unassigned_teacher_ids)
-    st.write(f"Count: {len(unassigned_teacher_ids)}")
-    
-    st.write("#### Temporary Assignments")
-    st.write(st.session_state.temp_assignments)
-    
-    st.write("#### School Options")
-    st.write(school_options)
-    
-    st.write("#### School Display Mapping")
-    st.write(school_display)
-    
-    # Add additional debug info if needed
-    st.write("#### Teachers DataFrame")
-    st.dataframe(teachers_df[['id', 'name', 'school_id', 'move']].head())
-    
-    st.write("#### Filtered Teachers")
-    if 'filtered_teachers' in st.session_state:
-        st.dataframe(st.session_state.filtered_teachers[['id', 'name', 'school_id', 'move']].head())
-    else:
-        st.write("No filtered teachers in session state")
 
+# Optimization Section
+st.header("Teacher-School Optimization")
+
+# Add a button to run optimization
+if st.button("Run Optimization"):
+    with st.spinner('Running optimization... This may take a moment...'):
+        try:
+            # Import the optimization function
+            from optimize_assignments import run_optimization
+            
+            # Run optimization
+            optimization_results = run_optimization()
+            
+            if optimization_results is not None:
+                # Store optimization results in session state
+                st.session_state.optimization_results = optimization_results
+                st.session_state.optimization_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                st.success("Optimization completed successfully!")
+                
+                # Display optimization results
+                st.subheader("Optimization Results")
+                
+                # Show summary of assignments by school
+                st.write("### School Assignments")
+                school_assignments = optimization_results[[
+                    'school_name', 'num_students', 'required_teachers', 'assigned_teachers'
+                ]].copy()
+                school_assignments = school_assignments.rename(columns={
+                    'school_name': 'School Name',
+                    'num_students': 'Students',
+                    'required_teachers': 'Required Teachers',
+                    'assigned_teachers': 'Assigned Teachers'
+                })
+                st.dataframe(school_assignments, use_container_width=True)
+                
+                # Show detailed teacher assignments
+                st.write("### Teacher Assignments by School")
+                teacher_assignments = optimization_results[['school_name', 'teacher_ids']].copy()
+                teacher_assignments = teacher_assignments.rename(columns={
+                    'school_name': 'School Name',
+                    'teacher_ids': 'Assigned Teachers'
+                })
+                st.dataframe(teacher_assignments, use_container_width=True)
+                
+                # Display metrics for optimized assignments
+                st.subheader("Optimized Assignment Metrics")
+                
+                # Calculate and display metrics similar to the current assignments
+                if not optimization_results.empty:
+                    # Calculate total students and teachers
+                    total_students = optimization_results['num_students'].sum()
+                    total_teachers = optimization_results['assigned_teachers'].sum()
+                    total_schools = len(optimization_results)
+                    
+                    # Calculate metrics
+                    avg_teachers_per_school = total_teachers / total_schools if total_schools > 0 else 0
+                    avg_students_per_teacher = total_students / total_teachers if total_teachers > 0 else 0
+                    
+                    # Display metrics in columns
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Students", f"{total_students:,}")
+                    with col2:
+                        st.metric("Total Teachers Assigned", total_teachers)
+                    with col3:
+                        st.metric("Average Teachers/School", f"{avg_teachers_per_school:.1f}")
+                    with col4:
+                        st.metric("Avg Students/Teacher", f"{avg_students_per_teacher:.1f}")
+                    
+                    # Show school balance for optimized assignments
+                    st.write("#### School Balance (Optimized)")
+                    display_balance = optimization_results[[
+                        'school_id', 'school_name', 'assigned_teachers'
+                    ]].copy()
+                    display_balance = display_balance.rename(columns={
+                        'school_id': 'School ID',
+                        'school_name': 'School Name',
+                        'assigned_teachers': 'Teacher Count'
+                    })
+                    
+                    st.dataframe(display_balance, use_container_width=True)
+                
+                # Show list of unassigned teachers (if any)
+                all_teachers = set(teachers_df['id'].tolist())
+                assigned_teachers = set()
+                for teachers in optimization_results['teacher_ids'].str.split(','):
+                    assigned_teachers.update([t.strip() for t in teachers if t.strip()])
+                unassigned_teachers = all_teachers - assigned_teachers
+                
+                if unassigned_teachers:
+                    st.warning(f"{len(unassigned_teachers)} teachers could not be assigned to any school.")
+                    unassigned_df = teachers_df[teachers_df['id'].isin(unassigned_teachers)][['id', 'name', 'station']]
+                    st.dataframe(unassigned_df, use_container_width=True)
+                
+                # Add download buttons for CSV exports
+                st.subheader("Export Results")
+                
+                # Create a temporary directory for exports
+                import tempfile
+                import os
+                from datetime import datetime
+                
+                with tempfile.TemporaryDirectory() as tmpdirname:
+                    # Create teacher assignments CSV
+                    teacher_export = []
+                    for _, row in optimization_results.iterrows():
+                        school_id = row['school_id']
+                        school_name = row['school_name']
+                        for teacher_id in row['teacher_ids'].split(','):
+                            teacher_id = teacher_id.strip()
+                            if teacher_id:
+                                teacher_info = teachers_df[teachers_df['id'] == teacher_id].iloc[0]
+                                teacher_export.append({
+                                    'Teacher ID': teacher_id,
+                                    'Teacher Name': teacher_info['name'],
+                                    'School ID': school_id,
+                                    'School Name': school_name,
+                                    'Students': row['num_students'],
+                                    'Required Teachers': row['required_teachers']
+                                })
+                    
+                    teacher_export_df = pd.DataFrame(teacher_export)
+                    teacher_csv = teacher_export_df.to_csv(index=False).encode('utf-8')
+                    
+                    # Create school summary CSV
+                    school_export = optimization_results[[
+                        'school_id', 'school_name', 'num_students', 
+                        'required_teachers', 'assigned_teachers'
+                    ]].copy()
+                    school_export = school_export.rename(columns={
+                        'school_id': 'School ID',
+                        'school_name': 'School Name',
+                        'num_students': 'Number of Students',
+                        'required_teachers': 'Required Teachers',
+                        'assigned_teachers': 'Assigned Teachers'
+                    })
+                    school_csv = school_export.to_csv(index=False).encode('utf-8')
+                    
+                    # Add download buttons
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.download_button(
+                            label="📥 Download Teacher Assignments (CSV)",
+                            data=teacher_csv,
+                            file_name=f"teacher_assignments_{timestamp}.csv",
+                            mime="text/csv"
+                        )
+                    
+                    with col2:
+                        st.download_button(
+                            label="📥 Download School Summary (CSV)",
+                            data=school_csv,
+                            file_name=f"school_summary_{timestamp}.csv",
+                            mime="text/csv"
+                        )
+                
+                # Update the session state to reflect the new assignments
+                st.session_state.temp_assignments = {}
+                for _, row in optimization_results.iterrows():
+                    school_id = row['school_id']
+                    for teacher_id in row['teacher_ids'].split(','):
+                        teacher_id = teacher_id.strip()
+                        if teacher_id:  # Skip empty strings
+                            st.session_state.temp_assignments[teacher_id] = school_id
+                
+                # Add a button to apply the optimization
+                if st.button("Apply These Assignments"):
+                    # Update the main teachers_df with all temporary assignments
+                    for teacher_id, school_id in st.session_state.temp_assignments.items():
+                        mask = teachers_df['id'] == teacher_id
+                        if mask.any():
+                            teachers_df.loc[mask, 'school_id'] = school_id if school_id else None
+                    
+                    # Save teacher data
+                    save_teachers(teachers_df)
+                    
+                    # Update assignments
+                    for teacher_id, school_id in st.session_state.temp_assignments.items():
+                        if school_id:  # Only update if there's a school assignment
+                            assignments_df = assign_teacher_to_school(
+                                teacher_id, 
+                                school_id,
+                                assignments_df
+                            )
+                    
+                    # Save assignments
+                    save_assignments(assignments_df)
+                    
+                    # Update the current assignments in session state
+                    st.session_state.current_assignments = get_current_assignments(assignments_df)
+                    
+                    st.success("Assignments have been applied successfully!")
+                    st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error during optimization: {str(e)}")
+            import traceback
+            st.text(traceback.format_exc())
+
+# Display current data
+expander = st.expander("View Raw Data")
+with expander:
+    st.dataframe(teachers_df)
 
 # Display current data
 expander = st.expander("View Raw Data")
