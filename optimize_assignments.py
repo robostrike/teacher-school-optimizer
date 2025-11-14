@@ -99,7 +99,7 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     for t in teacher_ids:
         prob += pulp.lpSum(x[(t, s)] for s in school_ids) <= 1
     
-    # 2. Each school must have at least the required number of teachers and at least one teacher
+    # 2. School assignment constraints
     for _, school in schools_df.iterrows():
         school_id = school['id']
         num_students = school.get('num_students', 0)
@@ -109,22 +109,30 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         fixed_count = len(fixed_assignments.get(school_id, []))
         
         # Constraint 2a: Each school must have at least the required number of teachers
-        prob += pulp.lpSum(x[(t, school_id)] for t in teacher_ids) >= max(0, required - fixed_count)
+        # But no more than 4 teachers total (including fixed assignments)
+        total_teachers = pulp.lpSum(x[(t, school_id)] for t in teacher_ids) + fixed_count
         
-        # Constraint 2b: Each school must have at least one teacher (either fixed or assigned)
-        if fixed_count == 0:  # Only add this constraint if there are no fixed assignments
-            prob += pulp.lpSum(x[(t, school_id)] for t in teacher_ids) >= 1
+        # School must have at least required teachers
+        prob += total_teachers >= required
+        
+        # School must have at least one teacher
+        prob += total_teachers >= 1
+        
+        # School cannot have more than 4 teachers
+        prob += total_teachers <= 4
     
     # 3. Create binary variables for school coverage
     school_covered = pulp.LpVariable.dicts("covered", school_ids, cat='Binary')
     for s in school_ids:
         fixed_count = len(fixed_assignments.get(s, []))
-        if fixed_count == 0:
-            # School is covered if it has at least one assigned teacher
-            prob += school_covered[s] <= pulp.lpSum(x[(t, s)] for t in teacher_ids)
-        else:
+        if fixed_count > 0:
             # Schools with fixed assignments are always considered covered
             prob += school_covered[s] == 1
+        else:
+            # School is covered if it has at least one assigned teacher
+            prob += school_covered[s] <= pulp.lpSum(x[(t, s)] for t in teacher_ids)
+            # Ensure at least one teacher is assigned if the school is covered
+            prob += school_covered[s] * len(teacher_ids) >= pulp.lpSum(x[(t, s)] for t in teacher_ids)
 
     # 4. Three-tiered objective
     # Priority 1: Maximize number of schools with at least one teacher (highest weight)
@@ -132,20 +140,28 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     # Priority 3: Maximize student coverage (lowest weight)
 
     # Weights (must be ordered: w1 >> w2 >> w3)
-    w1 = 100000  # Weight for school coverage (highest priority)
-    w2 = 1000    # Weight for travel time
-    w3 = 1       # Weight for student coverage
+    w1 = 1000000  # Weight for school coverage (highest priority) - increased
+    w2 = 1000     # Weight for travel time
+    w3 = 1        # Weight for student coverage
+    w4 = 10000    # New weight for balancing teacher distribution
 
     # Calculate maximum possible values for normalization
     max_students = schools_df['num_students'].max() if not schools_df.empty else 1
     max_travel = max(travel_costs.values()) if travel_costs else 1
 
-    # Three-tiered objective
+    # Four-part objective function
     prob += (
         # Priority 1: Maximize number of schools with at least one teacher
         -w1 * pulp.lpSum(1 - school_covered[s] for s in school_ids) +
         
-        # Priority 2: Minimize total travel time
+        # Priority 2: Balance teacher distribution (minimize deviation from required)
+        w4 * pulp.lpSum(
+            pulp.lpSum(x[(t, s)] for t in teacher_ids) + fixed_assignments.get(s, []) - required
+            for s in school_ids
+            for _ in range(1)  # Dummy loop to handle the expression
+        ) +
+        
+        # Priority 3: Minimize total travel time
         w2 * pulp.lpSum(
             (travel_costs.get((t, s), 1000) / max_travel) * x[(t, s)]
             for t in teacher_ids 
@@ -153,7 +169,7 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
             if (t, s) in travel_costs
         ) +
         
-        # Priority 3: Maximize student coverage (negative because we're minimizing)
+        # Priority 4: Maximize student coverage (negative because we're minimizing)
         -w3 * pulp.lpSum(
             (schools_df.loc[schools_df['id'] == s, 'num_students'].iloc[0] / max_students) * x[(t, s)]
             for t in teacher_ids
