@@ -99,7 +99,7 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
     for t in teacher_ids:
         prob += pulp.lpSum(x[(t, s)] for s in school_ids) <= 1
     
-    # 2. Each school must have at least the required number of teachers
+    # 2. Each school must have at least the required number of teachers and at least one teacher
     for _, school in schools_df.iterrows():
         school_id = school['id']
         num_students = school.get('num_students', 0)
@@ -108,8 +108,12 @@ def optimize_teacher_assignments() -> Dict[str, List[str]]:
         # Count fixed assignments for this school
         fixed_count = len(fixed_assignments.get(school_id, []))
         
-        # Add constraint for movable teachers
+        # Constraint 2a: Each school must have at least the required number of teachers
         prob += pulp.lpSum(x[(t, school_id)] for t in teacher_ids) >= max(0, required - fixed_count)
+        
+        # Constraint 2b: Each school must have at least one teacher (either fixed or assigned)
+        if fixed_count == 0:  # Only add this constraint if there are no fixed assignments
+            prob += pulp.lpSum(x[(t, school_id)] for t in teacher_ids) >= 1
     
     # 3. Objective: Minimize total travel time while prioritizing schools with more students
     # We use a weighted sum where student count has higher priority than travel time
